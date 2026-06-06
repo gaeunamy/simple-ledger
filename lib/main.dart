@@ -78,6 +78,7 @@ class CardData {
   bool get isOverBudget => spent > total;
   double get spentPercent => total > 0 ? (spent / total).clamp(0.0, 1.0) : 0.0;
 }
+
 class MultiCardScreen extends StatefulWidget {
   const MultiCardScreen({super.key});
 
@@ -114,8 +115,8 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
   }
 
   // 지출 내역 추가 팝업 모달
-  void _showAddExpenseModal(BuildContext context) {
-    int selectedCardIndex = 0;
+  void _showAddExpenseModal(BuildContext context, {int initialCardIndex = 0}) {
+    int selectedCardIndex = initialCardIndex;
     final TextEditingController amountController = TextEditingController();
 
     showModalBottomSheet(
@@ -252,7 +253,6 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                           int amount = int.tryParse(amountController.text.replaceAll(',', '')) ?? 0;
                           if (amount > 0) {
                             setState(() {
-                              // 💡 핵심 3: spent += amount 를 삭제함! 리스트에 내역만 넣으면 자동 반영!
                               cards[selectedCardIndex].expenses.insert(
                                 0, 
                                 Expense(amount: amount, date: DateTime.now())
@@ -343,13 +343,44 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                     ),
                     const SizedBox(height: 24),
                     
-                    Text(
-                      card.name,
-                      style: const TextStyle(
-                        color: Color(0xFF2D3142),
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    // 추가 버튼
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          card.name,
+                          style: const TextStyle(
+                            color: Color(0xFF2D3142),
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap: () {
+                            Navigator.pop(context); // 현재 상세 모달 닫기
+                            _showAddExpenseModal(context, initialCardIndex: cards.indexOf(card)); // 지출 추가 모달 열기
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE0E5EC),
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 4),
+                                BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 4),
+                              ],
+                            ),
+                            child: const Text(
+                              '+',
+                              style: TextStyle(
+                                fontSize: 16, 
+                                color: Color(0xFF2D3142), 
+                                fontWeight: FontWeight.bold
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 24),
 
@@ -406,7 +437,6 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                                           });
                                           setModalState(() {}); 
                                         },
-                                        // 💡 중복되었던 두 번째 child를 지우고 하나만 남겼습니다!
                                         child: Container(
                                           padding: const EdgeInsets.all(8),
                                           child: const Icon(
@@ -653,7 +683,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
               ),
               itemCount: cards.length,
               itemBuilder: (context, index) => GestureDetector(
-                onTap: () => _showCardDetailModal(context, cards[index]), // 카드 클릭 이벤트 추가
+                onTap: () => _showCardDetailModal(context, cards[index]), 
                 child: BudgetCardWidget(data: cards[index]),
               ),
             ),
