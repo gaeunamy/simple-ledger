@@ -154,7 +154,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                     const Text(
                       '지출 내역 추가',
                       style: TextStyle(
-                        fontSize: 16, 
+                        fontSize: 18, 
                         fontWeight: FontWeight.bold, 
                         color: Color(0xFF2D3142)
                       ),
@@ -293,7 +293,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                         child: const Text(
                           '확인',
                           style: TextStyle(
-                            fontSize: 14,
+                            fontSize: 16,
                             fontWeight: FontWeight.bold,
                             color: Colors.white,
                           ),
@@ -992,11 +992,11 @@ class _BudgetCardWidgetState extends State<BudgetCardWidget> {
                 ),
                 const Text(
                   ' / ',
-                  style: TextStyle(fontSize: 13, color: Color(0xFF9098B1)),
+                  style: TextStyle(fontSize: 14, color: Color(0xFF9098B1)),
                 ),
                 Text(
                   '${_formatCurrency(widget.data.total)}원',
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF9098B1)),
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF9098B1)),
                 ),
               ],
             ),
