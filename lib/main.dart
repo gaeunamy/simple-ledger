@@ -39,12 +39,14 @@ class Expense {
 
 class CardData {
   final String name;
+  final String logoPath;
   int spent; 
   final int total;
   final List<Expense> expenses; // 지출 내역 리스트 추가
 
   CardData({
     required this.name, 
+    required this.logoPath,
     required this.spent, 
     required this.total,
     List<Expense>? expenses,
@@ -63,10 +65,10 @@ class MultiCardScreen extends StatefulWidget {
 
 class _MultiCardScreenState extends State<MultiCardScreen> {
   final List<CardData> cards = [
-    CardData(name: '신한카드', spent: 106500, total: 150000),
-    CardData(name: '국민카드', spent: 170000, total: 150000),
-    CardData(name: '하나카드', spent: 35000, total: 150000),
-    CardData(name: '롯데카드', spent: 150000, total: 150000),
+    CardData(name: '롯데카드', logoPath: 'assets/images/lotte.png', spent: 106500, total: 150000),
+    CardData(name: '국민카드', logoPath: 'assets/images/kb.png', spent: 170000, total: 150000),
+    CardData(name: '하나카드',logoPath: 'assets/images/hana.png', spent: 35000, total: 150000),
+    CardData(name: '삼성카드', logoPath: 'assets/images/samsung.png', spent: 150000, total: 150000),
   ];
 
   String _formatCurrency(int amount) {
@@ -482,14 +484,27 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                       padding: const EdgeInsets.only(bottom: 20),
                       child: Row(
                         children: [
-                          CircleAvatar(
-                            radius: 28,
-                            backgroundColor: const Color(0xFF2A2A2D),
-                            child: Text(
-                              card.name[0],
-                              style: const TextStyle(
-                                color: Colors.white,
-                              ),
+                          Container(
+                            width: 28,
+                            height: 28,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE0E5EC),
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 3),
+                                BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 3),
+                              ],
+                            ),
+                            alignment: Alignment.center,
+                            clipBehavior: Clip.antiAlias,
+                            child: Image.asset(
+                              card.logoPath,
+                              width: 20,
+                              height: 20,
+                              fit: BoxFit.contain,
+                              errorBuilder: (context, error, stackTrace) {
+                                return const Icon(Icons.credit_card, size: 12, color: Color(0xFF2F60FF));
+                              },
                             ),
                           ),
                           const SizedBox(width: 16),
@@ -873,9 +888,15 @@ class _BudgetCardWidgetState extends State<BudgetCardWidget> {
                     ],
                   ),
                   alignment: Alignment.center,
-                  child: Text(
-                    widget.data.name[0],
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF2F60FF)),
+                  clipBehavior: Clip.antiAlias,
+                  child: Image.asset(
+                    widget.data.logoPath,
+                    width: 20,
+                    height: 20,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return const Icon(Icons.credit_card, size: 16, color: Color(0xFF2F60FF));
+                    },
                   ),
                 ),
                 const SizedBox(width: 8),
