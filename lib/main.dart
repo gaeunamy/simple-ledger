@@ -88,8 +88,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                           return Expanded(
                             child: GestureDetector(
                               onTap: () => setModalState(() => selectedCardIndex = index),
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 150),
+                              child: Container(
                                 decoration: isSelected
                                     ? BoxDecoration(
                                         color: const Color(0xFFE0E5EC),
