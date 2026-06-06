@@ -64,6 +64,17 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Center(
+                      child: Container(
+                        width: 48,
+                        height: 5,
+                        margin: const EdgeInsets.only(bottom: 24), // 아래쪽 여백 추가
+                        decoration: BoxDecoration(
+                          color: Colors.grey.withOpacity(0.5), // 약간 투명한 회색
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
+                    ),
                     const Text(
                       '지출 내역 추가',
                       style: TextStyle(
@@ -286,7 +297,7 @@ void _showSummaryModal(BuildContext context) {
                     '총 소비',
                     '${_formatCurrency(totalSpent)}원',
                     const Color(0xFF2D3142),
-                    subText: '/ ${_formatCurrency(totalBudget)}원',
+                    //subText: '/ ${_formatCurrency(totalBudget)}원',
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -396,68 +407,50 @@ void _showSummaryModal(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween, // 양 끝으로 정렬
           children: [
-            const Text(
-              '내 플랜',
-              style: TextStyle(
+            // n월 플랜 텍스트
+            Text(
+              '$currentMonth월 플랜',
+              style: const TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: Color(0xFF2D3142), 
+                color: Color(0xFF2D3142),
               ),
             ),
-            const SizedBox(width: 12),
+            // 우측 상단 요약 버튼
             GestureDetector(
               onTap: () => _showSummaryModal(context),
               child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
                   color: const Color(0xFFE0E5EC),
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
-                    const BoxShadow(
-                      color: Colors.white,
-                      offset: Offset(-2, -2),
-                      blurRadius: 4,
-                    ),
-                    BoxShadow(
-                      color: const Color(0xFFA3B1C6).withOpacity(0.5),
-                      offset: const Offset(2, 2),
-                      blurRadius: 4,
-                    ),
+                    const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 4),
+                    BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 4),
                   ],
                 ),
                 child: const Text(
                   '요약',
-                  style: TextStyle(fontSize: 12, color: Color(0xFF9098B1), fontWeight: FontWeight.bold),
+                  style: TextStyle(fontSize: 14, color: Color(0xFF2D3142), fontWeight: FontWeight.bold),
                 ),
               ),
             ),
           ],
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add, color: Color(0xFF2D3142), size: 28),
-            onPressed: () {},
-          ),
-          IconButton(
-            icon: const Icon(Icons.more_horiz, color: Color(0xFF2D3142)),
-            onPressed: () {},
-          ),
-        ],
       ),
       body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildProgressSection(progressPercent, now.day, currentMonth),
-              const SizedBox(height: 48),
-              _buildCardGrid(),
-              const SizedBox(height: 48),
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 5), 
+            _buildProgressSection(progressPercent, now.day, currentMonth),
+            const SizedBox(height: 60),
+            _buildCardGrid(),
+              const SizedBox(height: 60),
               
               // 메인 화면 하단 - 글자 크기에 맞춘 입체적인 파란색 뉴모피즘 버튼
               Center(
@@ -581,14 +574,6 @@ Widget _summaryCard(
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          '$currentMonth월 진행 상황', 
-          style: const TextStyle(
-            fontSize: 14,
-            color: Color(0xFF9098B1),
-            fontWeight: FontWeight.w600,
-          ),
-        ),
         const SizedBox(height: 44), 
         
         LayoutBuilder(
@@ -688,8 +673,8 @@ Widget _summaryCard(
       physics: const NeverScrollableScrollPhysics(),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        crossAxisSpacing: 20,
-        mainAxisSpacing: 28,
+        crossAxisSpacing: 25,
+        mainAxisSpacing: 30,
         childAspectRatio: 0.85, 
       ),
       itemCount: cards.length,
@@ -727,9 +712,7 @@ class _BudgetCardWidgetState extends State<BudgetCardWidget> {
 
   @override
   Widget build(BuildContext context) {
-    // 1. MouseRegion 제거 (카드 전체의 상호작용 삭제)
     return Container(
-      // 2. AnimatedContainer를 일반 Container로 변경 (상태 변화 애니메이션 제거)
       decoration: BoxDecoration(
         color: const Color(0xFFE0E5EC),
         borderRadius: BorderRadius.circular(24),
@@ -747,6 +730,7 @@ class _BudgetCardWidgetState extends State<BudgetCardWidget> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // 카드사 로고 및 이름
             Row(
               children: [
                 Container(
@@ -774,12 +758,10 @@ class _BudgetCardWidgetState extends State<BudgetCardWidget> {
               ],
             ),
             
+            // 차트 영역
             Expanded(child: Center(child: _buildDonutChart())),
             
-            const Center(
-              child: Text('지출 금액', style: TextStyle(fontSize: 13, color: Color(0xFF9098B1), fontWeight: FontWeight.w600)),
-            ),
-            const SizedBox(height: 6),
+            // 하단 금액 정보 (지출 금액 텍스트 제거됨)
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.baseline,
