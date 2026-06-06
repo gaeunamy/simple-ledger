@@ -1,6 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
-void main() {
+part 'main.g.dart'; 
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await Hive.initFlutter();
+
+  Hive.registerAdapter(ExpenseAdapter());
+  Hive.registerAdapter(CardDataAdapter());
+
+  await Hive.openBox<CardData>('myCardsBox');
+
   runApp(const MyApp());
 }
 
@@ -24,24 +36,36 @@ class MyApp extends StatelessWidget {
 }
 
 // 지출 내역 모델
+@HiveType(typeId: 0)
 class Expense {
+  @HiveField(0)
   final int amount;
+  
+  @HiveField(1)
   final DateTime date;
 
   Expense({required this.amount, required this.date});
 
-  // M.d 요일 포맷
   String get formattedDate {
     const weekdays = ['월', '화', '수', '목', '금', '토', '일'];
     return '${date.month}.${date.day} ${weekdays[date.weekday - 1]}';
   }
 }
 
+// 카드 데이터 모델
+@HiveType(typeId: 1)
 class CardData {
+  @HiveField(0)
   final String name;
+  
+  @HiveField(1)
   final String logoPath;
+  
+  @HiveField(2)
   final int total;
-  final List<Expense> expenses; // 지출 내역 리스트
+  
+  @HiveField(3)
+  List<Expense> expenses;
 
   CardData({
     required this.name, 
@@ -50,13 +74,10 @@ class CardData {
     List<Expense>? expenses,
   }) : expenses = expenses ?? [];
 
-  // 💡 핵심 1: spent 변수를 없애고, expenses 리스트의 합계를 자동으로 구하도록 변경!
   int get spent => expenses.fold(0, (sum, item) => sum + item.amount);
-
   bool get isOverBudget => spent > total;
   double get spentPercent => total > 0 ? (spent / total).clamp(0.0, 1.0) : 0.0;
 }
-
 class MultiCardScreen extends StatefulWidget {
   const MultiCardScreen({super.key});
 
@@ -65,33 +86,25 @@ class MultiCardScreen extends StatefulWidget {
 }
 
 class _MultiCardScreenState extends State<MultiCardScreen> {
-  // 💡 핵심 2: spent 값을 직접 적는 대신, 실제 지출 내역 데이터(Expense)를 넣어줌!
-  final List<CardData> cards = [
-    CardData(
-      name: '롯데카드', 
-      logoPath: 'assets/images/lotte.png', 
-      total: 150000,
-      expenses: [],
-    ),
-    CardData(
-      name: '국민카드', 
-      logoPath: 'assets/images/kb.png', 
-      total: 150000,
-      expenses: [],
-    ),
-    CardData(
-      name: '하나카드', 
-      logoPath: 'assets/images/hana.png', 
-      total: 150000,
-      expenses: [],
-    ),
-    CardData(
-      name: '삼성카드', 
-      logoPath: 'assets/images/samsung.png', 
-      total: 150000,
-      expenses: [],
-    ),
-  ];
+  late Box<CardData> cardBox;
+  late List<CardData> cards;
+
+  @override
+  void initState() {
+    super.initState();
+    cardBox = Hive.box<CardData>('myCardsBox');
+
+    if (cardBox.isEmpty) {
+      cardBox.addAll([
+        CardData(name: '롯데카드', logoPath: 'assets/images/lotte.png', total: 150000, expenses: []),
+        CardData(name: '국민카드', logoPath: 'assets/images/kb.png', total: 150000, expenses: []),
+        CardData(name: '하나카드', logoPath: 'assets/images/hana.png', total: 150000, expenses: []),
+        CardData(name: '삼성카드', logoPath: 'assets/images/samsung.png', total: 150000, expenses: []),
+      ]);
+    }
+
+    cards = cardBox.values.toList();
+  }
 
   String _formatCurrency(int amount) {
     return amount.toString().replaceAllMapped(
@@ -244,6 +257,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                                 0, 
                                 Expense(amount: amount, date: DateTime.now())
                               );
+                              cardBox.putAt(selectedCardIndex, cards[selectedCardIndex]);
                             });
                             Navigator.pop(context); 
                           }
@@ -298,121 +312,124 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
 
   // 특정 카드 지출 내역 모달
   void _showCardDetailModal(BuildContext context, CardData card) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            return Container(
-              height: MediaQuery.of(context).size.height * 0.7, 
-              padding: const EdgeInsets.all(24),
-              decoration: const BoxDecoration(
-                color: Color(0xFFE0E5EC),
-                borderRadius: BorderRadius.vertical(
-                  top: Radius.circular(32),
+      showModalBottomSheet(
+        context: context,
+        backgroundColor: Colors.transparent,
+        isScrollControlled: true,
+        builder: (context) {
+          return StatefulBuilder(
+            builder: (context, setModalState) {
+              return Container(
+                height: MediaQuery.of(context).size.height * 0.7, 
+                padding: const EdgeInsets.all(24),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFE0E5EC),
+                  borderRadius: BorderRadius.vertical(
+                    top: Radius.circular(32),
+                  ),
                 ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 48,
-                      height: 5,
-                      decoration: BoxDecoration(
-                        color: Colors.grey,
-                        borderRadius: BorderRadius.circular(999),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 48,
+                        height: 5,
+                        decoration: BoxDecoration(
+                          color: Colors.grey,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 24),
-                  
-                  Text(
-                    card.name,
-                    style: const TextStyle(
-                      color: Color(0xFF2D3142),
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
+                    const SizedBox(height: 24),
+                    
+                    Text(
+                      card.name,
+                      style: const TextStyle(
+                        color: Color(0xFF2D3142),
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 24),
+                    const SizedBox(height: 24),
 
-                  Expanded(
-                    child: card.expenses.isEmpty
-                        ? const Center(
-                            child: Text(
-                              '아직 등록된 지출 내역이 없습니다.',
-                              style: TextStyle(
-                                color: Color(0xFF9098B1),
-                                fontSize: 16,
-                              ),
-                            ),
-                          )
-                        : ListView.builder(
-                            itemCount: card.expenses.length,
-                            itemBuilder: (_, index) {
-                              final expense = card.expenses[index];
-
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 20),
-                                child: Row(
-                                  children: [
-                                    SizedBox(
-                                      width: 60,
-                                      child: Text(
-                                        expense.formattedDate,
-                                        style: const TextStyle(
-                                          color: Color(0xFF9098B1),
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 16),
-                                    Expanded(
-                                      child: Text(
-                                        '${_formatCurrency(expense.amount)}원',
-                                        textAlign: TextAlign.center,
-                                        style: const TextStyle(
-                                          color: Color(0xFF2D3142),
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 16),
-                                    GestureDetector(
-                                      onTap: () {
-                                        setState(() {
-                                          // 💡 핵심 3: spent -= amount 삭제! 리스트에서 지우기만 하면 됨!
-                                          card.expenses.removeAt(index); 
-                                        });
-                                        setModalState(() {}); 
-                                      },
-                                      child: Container(
-                                        padding: const EdgeInsets.all(8),
-                                        child: const Icon(
-                                          Icons.close,
-                                          color: Colors.redAccent,
-                                          size: 20,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
+                    Expanded(
+                      child: card.expenses.isEmpty
+                          ? const Center(
+                              child: Text(
+                                '아직 등록된 지출 내역이 없습니다.',
+                                style: TextStyle(
+                                  color: Color(0xFF9098B1),
+                                  fontSize: 16,
                                 ),
-                              );
-                            },
-                          ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
+                              ),
+                            )
+                          : ListView.builder(
+                              itemCount: card.expenses.length,
+                              itemBuilder: (_, index) {
+                                final expense = card.expenses[index];
+
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 20),
+                                  child: Row(
+                                    children: [
+                                      SizedBox(
+                                        width: 60,
+                                        child: Text(
+                                          expense.formattedDate,
+                                          style: const TextStyle(
+                                            color: Color(0xFF9098B1),
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 16),
+                                      Expanded(
+                                        child: Text(
+                                          '${_formatCurrency(expense.amount)}원',
+                                          textAlign: TextAlign.center,
+                                          style: const TextStyle(
+                                            color: Color(0xFF2D3142),
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 16),
+                                      GestureDetector(
+                                        onTap: () {
+                                          setState(() {
+                                            card.expenses.removeAt(index); 
+                                            
+                                            int cardIndex = cards.indexOf(card);
+                                            cardBox.putAt(cardIndex, card);
+                                          });
+                                          setModalState(() {}); 
+                                        },
+                                        // 💡 중복되었던 두 번째 child를 지우고 하나만 남겼습니다!
+                                        child: Container(
+                                          padding: const EdgeInsets.all(8),
+                                          child: const Icon(
+                                            Icons.close,
+                                            color: Colors.redAccent,
+                                            size: 20,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
+      );
+    }
 
   void _showSummaryModal(BuildContext context) {
       final totalSpent = cards.fold<int>(0, (sum, card) => sum + card.spent);
