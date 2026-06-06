@@ -52,7 +52,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
             const Text(
               '내 플랜',
               style: TextStyle(
-                fontSize: 28,
+                fontSize: 20,
                 fontWeight: FontWeight.bold,
                 color: Color(0xFF2D3142), 
               ),
@@ -266,19 +266,56 @@ class _BudgetCardWidgetState extends State<BudgetCardWidget> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         decoration: BoxDecoration(
-          color: const Color(0xFFE0E5EC), 
+          color: const Color(0xFFE0E5EC),
           borderRadius: BorderRadius.circular(24),
           boxShadow: _isHovered
-              ? [BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.4), offset: const Offset(3, 3), blurRadius: 6), const BoxShadow(color: Colors.white, offset: Offset(-3, -3), blurRadius: 6)]
-              : [BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.6), offset: const Offset(8, 8), blurRadius: 16), const BoxShadow(color: Colors.white, offset: Offset(-8, -8), blurRadius: 16)],
+              ? [
+                  BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.4), offset: const Offset(3, 3), blurRadius: 6),
+                  const BoxShadow(color: Colors.white, offset: Offset(-3, -3), blurRadius: 6)
+                ]
+              : [
+                  BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.6), offset: const Offset(8, 8), blurRadius: 16),
+                  const BoxShadow(color: Colors.white, offset: Offset(-8, -8), blurRadius: 16)
+                ],
         ),
         child: Padding(
           padding: const EdgeInsets.all(16.0),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(child: _buildDonutChart()),
-              const Text('지출 금액', style: TextStyle(fontSize: 11, color: Color(0xFF9098B1), fontWeight: FontWeight.w600)),
+              // 좌측 상단 카드사 로고 & 이름
+              Row(
+                children: [
+                  Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE0E5EC),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 3),
+                        BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 3),
+                      ],
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      widget.data.name[0], 
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF2F60FF)),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    widget.data.name,
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
+                  ),
+                ],
+              ),
+              
+              Expanded(child: Center(child: _buildDonutChart())),
+              
+              const Center(
+                child: Text('지출 금액', style: TextStyle(fontSize: 13, color: Color(0xFF9098B1), fontWeight: FontWeight.w600)),
+              ),
               const SizedBox(height: 6),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -286,24 +323,39 @@ class _BudgetCardWidgetState extends State<BudgetCardWidget> {
                 textBaseline: TextBaseline.alphabetic,
                 children: [
                   Text(
-                    '${_formatCurrency(widget.data.spent)}원', 
+                    '${_formatCurrency(widget.data.spent)}원',
                     style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
                   ),
                   const Text(
-                    ' / ', 
+                    ' / ',
                     style: TextStyle(fontSize: 13, color: Color(0xFF9098B1)),
                   ),
                   Text(
-                    '${_formatCurrency(widget.data.total)}원', 
+                    '${_formatCurrency(widget.data.total)}원',
                     style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF9098B1)),
                   ),
                 ],
               ),
               const SizedBox(height: 14),
+              
+              // 배경과 동일한 색상의 뉴모피즘 스타일 '상세보기' 버튼
               Container(
-                width: double.infinity, height: 42, alignment: Alignment.center,
-                decoration: BoxDecoration(color: const Color(0xFF2F60FF), borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: const Color(0xFF2F60FF).withOpacity(0.4), offset: const Offset(0, 4), blurRadius: 8)]),
-                child: Text(widget.data.name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white)),
+                width: double.infinity,
+                height: 48, 
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  // 기존 배경색(0xFFE0E5EC)보다 한 톤 어두운 색상으로 쏙 들어간 느낌을 줍니다.
+                  color: const Color(0xFFD1D9E6), 
+                  borderRadius: BorderRadius.circular(16), 
+                ),
+                child: const Text(
+                  '상세보기', 
+                  style: TextStyle(
+                    fontSize: 14, 
+                    fontWeight: FontWeight.bold, 
+                    color: Color(0xFF9098B1), // 텍스트도 튀지 않게 은은한 색상 유지
+                  ),
+                ),
               ),
             ],
           ),
@@ -317,10 +369,43 @@ class _BudgetCardWidgetState extends State<BudgetCardWidget> {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          Container(width: 120, height: 120, decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFFE0E5EC), boxShadow: [BoxShadow(color: Color(0xFFA3B1C6), offset: Offset(4, 4), blurRadius: 8), BoxShadow(color: Colors.white, offset: Offset(-4, -4), blurRadius: 8)])),
-          SizedBox(width: 120, height: 120, child: CircularProgressIndicator(value: widget.data.spentPercent, strokeWidth: 8, valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF2F60FF)), strokeCap: StrokeCap.round)),
-          if (widget.data.isOverBudget) SizedBox(width: 120, height: 120, child: CircularProgressIndicator(value: ((widget.data.spent - widget.data.total) / widget.data.total).clamp(0.0, 1.0), strokeWidth: 8, valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFF453A)), strokeCap: StrokeCap.round)),
-          Text(_formatCurrency(widget.data.spent), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF2D3142))),
+          Container(
+            width: 120,
+            height: 120,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: Color(0xFFE0E5EC),
+              boxShadow: [
+                BoxShadow(color: Color(0xFFA3B1C6), offset: Offset(4, 4), blurRadius: 8),
+                BoxShadow(color: Colors.white, offset: Offset(-4, -4), blurRadius: 8)
+              ],
+            ),
+          ),
+          SizedBox(
+            width: 120,
+            height: 120,
+            child: CircularProgressIndicator(
+              value: widget.data.spentPercent,
+              strokeWidth: 8,
+              valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF2F60FF)),
+              strokeCap: StrokeCap.round,
+            ),
+          ),
+          if (widget.data.isOverBudget)
+            SizedBox(
+              width: 120,
+              height: 120,
+              child: CircularProgressIndicator(
+                value: ((widget.data.spent - widget.data.total) / widget.data.total).clamp(0.0, 1.0),
+                strokeWidth: 8,
+                valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFF453A)),
+                strokeCap: StrokeCap.round,
+              ),
+            ),
+          Text(
+            _formatCurrency(widget.data.spent),
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
+          ),
         ],
       ),
     );
