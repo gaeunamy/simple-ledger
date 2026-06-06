@@ -140,10 +140,10 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                               isDense: true,
                               contentPadding: EdgeInsets.only(bottom: 6),
                               enabledBorder: UnderlineInputBorder(
-                                borderSide: BorderSide(color: Color(0xFF14546A), width: 2),
+                                borderSide: BorderSide(color: Color(0xFFD1D9E6), width: 1),
                               ),
                               focusedBorder: UnderlineInputBorder(
-                                borderSide: BorderSide(color: Color(0xFF14546A), width: 2),
+                                borderSide: BorderSide(color: Color(0xFF2F60FF), width: 1),
                               ),
                             ),
                           ),
