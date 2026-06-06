@@ -23,6 +23,37 @@ class MyApp extends StatelessWidget {
   }
 }
 
+// 지출 내역 모델
+class Expense {
+  final int amount;
+  final DateTime date;
+
+  Expense({required this.amount, required this.date});
+
+  // M.d 요일 포맷
+  String get formattedDate {
+    const weekdays = ['월', '화', '수', '목', '금', '토', '일'];
+    return '${date.month}.${date.day} ${weekdays[date.weekday - 1]}';
+  }
+}
+
+class CardData {
+  final String name;
+  int spent; 
+  final int total;
+  final List<Expense> expenses; // 지출 내역 리스트 추가
+
+  CardData({
+    required this.name, 
+    required this.spent, 
+    required this.total,
+    List<Expense>? expenses,
+  }) : expenses = expenses ?? [];
+
+  bool get isOverBudget => spent > total;
+  double get spentPercent => (spent / total).clamp(0.0, 1.0);
+}
+
 class MultiCardScreen extends StatefulWidget {
   const MultiCardScreen({super.key});
 
@@ -38,21 +69,28 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
     CardData(name: '롯데카드', spent: 150000, total: 150000),
   ];
 
-  // 팝업 모달 띄우기 함수
+  String _formatCurrency(int amount) {
+    return amount.toString().replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (m) => '${m[1]},',
+    );
+  }
+
+  // 지출 내역 추가 팝업 모달
   void _showAddExpenseModal(BuildContext context) {
     int selectedCardIndex = 0;
     final TextEditingController amountController = TextEditingController();
 
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true, // 키보드가 올라올 때 모달이 밀려 올라가도록 설정
+      isScrollControlled: true, 
       backgroundColor: Colors.transparent,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setModalState) {
             return Padding(
               padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).viewInsets.bottom, // 키보드 높이만큼 여백 추가
+                bottom: MediaQuery.of(context).viewInsets.bottom, 
               ),
               child: Container(
                 padding: const EdgeInsets.all(24),
@@ -68,9 +106,9 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                       child: Container(
                         width: 48,
                         height: 5,
-                        margin: const EdgeInsets.only(bottom: 24), // 아래쪽 여백 추가
+                        margin: const EdgeInsets.only(bottom: 24), 
                         decoration: BoxDecoration(
-                          color: Colors.grey.withOpacity(0.5), // 약간 투명한 회색
+                          color: Colors.grey.withOpacity(0.5), 
                           borderRadius: BorderRadius.circular(999),
                         ),
                       ),
@@ -85,12 +123,11 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                     ),
                     const SizedBox(height: 24),
                     
-                    // 1열 4행 카드사 선택 탭
                     Container(
                       height: 50,
                       padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFD1D9E6), // 음각 느낌 배경
+                        color: const Color(0xFFD1D9E6), 
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Row(
@@ -112,7 +149,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                                     : const BoxDecoration(color: Colors.transparent),
                                 alignment: Alignment.center,
                                 child: Text(
-                                  cards[index].name.substring(0, 2), // 카드사 이름 두 글자만
+                                  cards[index].name.substring(0, 2), 
                                   style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
@@ -128,7 +165,6 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                     
                     const SizedBox(height: 32),
                     
-                    // 소비 금액 입력창
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
@@ -173,16 +209,20 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                     
                     const SizedBox(height: 40),
                     
-                    // 확인 (추가) 버튼 - 파란색 입체 뉴모피즘 스타일 적용
                     GestureDetector(
                       onTap: () {
                         if (amountController.text.isNotEmpty) {
                           int amount = int.tryParse(amountController.text.replaceAll(',', '')) ?? 0;
                           if (amount > 0) {
                             setState(() {
+                              // 카드 사용금액 증가 및 지출 내역 리스트 최상단에 새 항목 추가
                               cards[selectedCardIndex].spent += amount;
+                              cards[selectedCardIndex].expenses.insert(
+                                0, 
+                                Expense(amount: amount, date: DateTime.now())
+                              );
                             });
-                            Navigator.pop(context); // 적용 후 모달 닫기
+                            Navigator.pop(context); 
                           }
                         }
                       },
@@ -193,8 +233,8 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                           borderRadius: BorderRadius.circular(16),
                           gradient: const LinearGradient(
                             colors: [
-                              Color(0xFF4A7DFF), // 좌상단: 밝은 파랑
-                              Color(0xFF1A4BFF), // 우하단: 진한 파랑
+                              Color(0xFF4A7DFF), 
+                              Color(0xFF1A4BFF), 
                             ],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
@@ -233,169 +273,272 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
     );
   }
 
-String _formatCurrency(int amount) {
-  return amount.toString().replaceAllMapped(
-    RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-    (m) => '${m[1]},',
-  );
-}
-
-void _showSummaryModal(BuildContext context) {
-  final totalSpent =
-      cards.fold<int>(0, (sum, card) => sum + card.spent);
-
-  final totalBudget =
-      cards.fold<int>(0, (sum, card) => sum + card.total);
-
-  final totalRemaining = totalBudget - totalSpent;
-
-  showModalBottomSheet(
-    context: context,
-    backgroundColor: Colors.transparent,
-    isScrollControlled: true,
-    builder: (_) {
-      return Container(
-        height: MediaQuery.of(context).size.height * 0.8,
-        padding: const EdgeInsets.all(24),
-        decoration: const BoxDecoration(
-          color: Color(0xFFE0E5EC),
-          borderRadius: BorderRadius.vertical(
-            top: Radius.circular(32),
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 48,
-                height: 5,
-                decoration: BoxDecoration(
-                  color: Colors.grey,
-                  borderRadius: BorderRadius.circular(999),
+  // 특정 카드 지출 내역 모달
+  void _showCardDetailModal(BuildContext context, CardData card) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.7, // 화면 70% 차지
+              padding: const EdgeInsets.all(24),
+              decoration: const BoxDecoration(
+                color: Color(0xFFE0E5EC),
+                borderRadius: BorderRadius.vertical(
+                  top: Radius.circular(32),
                 ),
               ),
-            ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 48,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: Colors.grey,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  
+                  // 다이얼로그 타이틀 (카드 이름)
+                  Text(
+                    card.name,
+                    style: const TextStyle(
+                      color: Color(0xFF2D3142),
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
 
-            const SizedBox(height: 24),
+                  // 지출 내역 리스트
+                  Expanded(
+                    child: card.expenses.isEmpty
+                        ? const Center(
+                            child: Text(
+                              '아직 등록된 지출 내역이 없습니다.',
+                              style: TextStyle(
+                                color: Color(0xFF9098B1),
+                                fontSize: 16,
+                              ),
+                            ),
+                          )
+                        : ListView.builder(
+                            itemCount: card.expenses.length,
+                            itemBuilder: (_, index) {
+                              final expense = card.expenses[index];
 
-            const Text(
-              '요약',
-              style: TextStyle(
-                color: Color(0xFF2D3142),
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 20),
+                                child: Row(
+                                  children: [
+                                    // 날짜 
+                                    SizedBox(
+                                      width: 60,
+                                      child: Text(
+                                        expense.formattedDate,
+                                        style: const TextStyle(
+                                          color: Color(0xFF9098B1),
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ),
+                                    
+                                    const SizedBox(width: 16),
+
+                                    // 지출 금액
+                                    Expanded(
+                                      child: Text(
+                                        '${_formatCurrency(expense.amount)}원',
+                                        textAlign: TextAlign.center,
+                                        style: const TextStyle(
+                                          color: Color(0xFF2D3142),
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+
+                                    const SizedBox(width: 16),
+
+                                    // 삭제(X) 버튼
+                                    GestureDetector(
+                                      onTap: () {
+                                        setState(() {
+                                          card.spent -= expense.amount; // 사용금액 차감
+                                          card.expenses.removeAt(index); // 내역 삭제
+                                        });
+                                        setModalState(() {}); // 모달 상태 갱신
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.all(8),
+                                        child: const Icon(
+                                          Icons.close,
+                                          color: Colors.redAccent,
+                                          size: 20,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
               ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // 기존 요약 모달 유지
+  void _showSummaryModal(BuildContext context) {
+    final totalSpent = cards.fold<int>(0, (sum, card) => sum + card.spent);
+    final totalBudget = cards.fold<int>(0, (sum, card) => sum + card.total);
+    final totalRemaining = totalBudget - totalSpent;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.8,
+          padding: const EdgeInsets.all(24),
+          decoration: const BoxDecoration(
+            color: Color(0xFFE0E5EC),
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(32),
             ),
-
-            const SizedBox(height: 24),
-
-            Row(
-              children: [
-                Expanded(
-                  child: _summaryCard(
-                    '총 소비',
-                    '${_formatCurrency(totalSpent)}원',
-                    const Color(0xFF2D3142),
-                    //subText: '/ ${_formatCurrency(totalBudget)}원',
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 48,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: Colors.grey,
+                    borderRadius: BorderRadius.circular(999),
                   ),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: _summaryCard(
-                  '남은 예산',
-                  '${_formatCurrency(totalRemaining)}원',
-                  const Color(0xFF2D3142),
-                ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 40),
-
-            const Text(
-              '카드별 소비',
-              style: TextStyle(
-                color: Color(0xFF9098B1),
-                fontSize: 16,
               ),
-            ),
+              const SizedBox(height: 24),
+              const Text(
+                '요약',
+                style: TextStyle(
+                  color: Color(0xFF2D3142),
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: _summaryCard(
+                      '총 소비',
+                      '${_formatCurrency(totalSpent)}원',
+                      const Color(0xFF2D3142),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: _summaryCard(
+                    '남은 예산',
+                    '${_formatCurrency(totalRemaining)}원',
+                    const Color(0xFF2D3142),
+                  ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 40),
+              const Text(
+                '카드별 소비',
+                style: TextStyle(
+                  color: Color(0xFF9098B1),
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: cards.length,
+                  itemBuilder: (_, index) {
+                    final card = cards[index];
+                    final remain = card.total - card.spent;
 
-            const SizedBox(height: 20),
-
-            Expanded(
-              child: ListView.builder(
-                itemCount: cards.length,
-                itemBuilder: (_, index) {
-                  final card = cards[index];
-                  final remain = card.total - card.spent;
-
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 20),
-                    child: Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 28,
-                          backgroundColor:
-                              const Color(0xFF2A2A2D),
-                          child: Text(
-                            card.name[0],
-                            style: const TextStyle(
-                              color: Colors.white,
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 20),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 28,
+                            backgroundColor: const Color(0xFF2A2A2D),
+                            child: Text(
+                              card.name[0],
+                              style: const TextStyle(
+                                color: Colors.white,
+                              ),
                             ),
                           ),
-                        ),
-
-                        const SizedBox(width: 16),
-
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment:
-                                CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                card.name,
-                                style: const TextStyle(
-                                  color: Color(0xFF9098B1),
-                                  fontSize: 14,
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  card.name,
+                                  style: const TextStyle(
+                                    color: Color(0xFF9098B1),
+                                    fontSize: 14,
+                                  ),
                                 ),
-                              ),
-                              Text(
-                                '${_formatCurrency(card.spent)}원',
-                                style: const TextStyle(
-                                  color: Color(0xFF2D3142),
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
+                                Text(
+                                  '${_formatCurrency(card.spent)}원',
+                                  style: const TextStyle(
+                                    color: Color(0xFF2D3142),
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
-
-                        Text(
-                          remain >= 0
-                              ? '${_formatCurrency(remain)}원 남음'
-                              : '-${_formatCurrency(remain.abs())}원 초과',
-                          style: TextStyle(
-                            color: remain >= 0
-                                ? const Color(0xFF2F60FF)
-                                : Colors.redAccent,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
+                          Text(
+                            remain >= 0
+                                ? '${_formatCurrency(remain)}원 남음'
+                                : '-${_formatCurrency(remain.abs())}원 초과',
+                            style: TextStyle(
+                              color: remain >= 0
+                                  ? const Color(0xFF2F60FF)
+                                  : Colors.redAccent,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
+                        ],
+                      ),
+                    );
+                  },
+                ),
               ),
-            ),
-          ],
-        ),
-      );
-    },
-  );
-}
+            ],
+          ),
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -407,9 +550,8 @@ void _showSummaryModal(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween, // 양 끝으로 정렬
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            // n월 플랜 텍스트
             Text(
               '$currentMonth월 플랜',
               style: const TextStyle(
@@ -418,7 +560,6 @@ void _showSummaryModal(BuildContext context) {
                 color: Color(0xFF2D3142),
               ),
             ),
-            // 우측 상단 요약 버튼
             GestureDetector(
               onTap: () => _showSummaryModal(context),
               child: Container(
@@ -449,126 +590,142 @@ void _showSummaryModal(BuildContext context) {
             const SizedBox(height: 5), 
             _buildProgressSection(progressPercent, now.day, currentMonth),
             const SizedBox(height: 60),
-            _buildCardGrid(),
-              const SizedBox(height: 60),
-              
-              // 메인 화면 하단 - 글자 크기에 맞춘 입체적인 파란색 뉴모피즘 버튼
-              Center(
-                child: GestureDetector(
-                  onTap: () => _showAddExpenseModal(context),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12), // 글자 크기에 맞춰지도록 패딩 설정
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      gradient: const LinearGradient(
-                        colors: [
-                          Color(0xFF4A7DFF), // 좌상단: 밝은 파랑
-                          Color(0xFF1A4BFF), // 우하단: 진한 파랑
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFF2F60FF).withOpacity(0.4),
-                          offset: const Offset(4, 6),
-                          blurRadius: 12,
-                        ),
-                        const BoxShadow(
-                          color: Colors.white,
-                          offset: Offset(-4, -4),
-                          blurRadius: 8,
-                        ),
+            
+            // 카드 그리드 뷰
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 25,
+                mainAxisSpacing: 30,
+                childAspectRatio: 0.85, 
+              ),
+              itemCount: cards.length,
+              itemBuilder: (context, index) => GestureDetector(
+                onTap: () => _showCardDetailModal(context, cards[index]), // 카드 클릭 이벤트 추가
+                child: BudgetCardWidget(data: cards[index]),
+              ),
+            ),
+            
+            const SizedBox(height: 60),
+            
+            Center(
+              child: GestureDetector(
+                onTap: () => _showAddExpenseModal(context),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    gradient: const LinearGradient(
+                      colors: [
+                        Color(0xFF4A7DFF),
+                        Color(0xFF1A4BFF),
                       ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
-                    child: const Text(
-                      '지출 내역 추가',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF2F60FF).withOpacity(0.4),
+                        offset: const Offset(4, 6),
+                        blurRadius: 12,
                       ),
+                      const BoxShadow(
+                        color: Colors.white,
+                        offset: Offset(-4, -4),
+                        blurRadius: 8,
+                      ),
+                    ],
+                  ),
+                  child: const Text(
+                    '지출 내역 추가',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
                     ),
                   ),
                 ),
               ),
-              
-              const SizedBox(height: 40),
-            ],
-          ),
+            ),
+            
+            const SizedBox(height: 40),
+          ],
         ),
+      ),
       ),
     );
   }
 
-Widget _summaryCard(
-  String title,
-  String value,
-  Color valueColor, {
-  String? subText,
-}) {
-  return Container(
-    padding: const EdgeInsets.all(20),
-    decoration: BoxDecoration(
-      color: const Color(0xFFE0E5EC),
-      borderRadius: BorderRadius.circular(24),
-      boxShadow: [
-        const BoxShadow(
-          color: Colors.white,
-          offset: Offset(-6, -6),
-          blurRadius: 12,
-        ),
-        BoxShadow(
-          color: const Color(0xFFA3B1C6).withOpacity(0.5),
-          offset: const Offset(6, 6),
-          blurRadius: 12,
-        ),
-      ],
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 14,
-            color: Color(0xFF9098B1),
-            fontWeight: FontWeight.w600,
+  Widget _summaryCard(
+    String title,
+    String value,
+    Color valueColor, {
+    String? subText,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE0E5EC),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          const BoxShadow(
+            color: Colors.white,
+            offset: Offset(-6, -6),
+            blurRadius: 12,
           ),
-        ),
-        const SizedBox(height: 12),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: valueColor,
-              ),
+          BoxShadow(
+            color: const Color(0xFFA3B1C6).withOpacity(0.5),
+            offset: const Offset(6, 6),
+            blurRadius: 12,
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 14,
+              color: Color(0xFF9098B1),
+              fontWeight: FontWeight.w600,
             ),
-
-            if (subText != null) ...[
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  subText,
-                  textAlign: TextAlign.right,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: Color(0xFF9098B1),
-                    fontWeight: FontWeight.w600,
-                  ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: valueColor,
                 ),
               ),
+
+              if (subText != null) ...[
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    subText,
+                    textAlign: TextAlign.right,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: Color(0xFF9098B1),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
             ],
-          ],
-        ),
-      ],
-    ),
-  );
-}
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildProgressSection(double progress, int currentDay, int currentMonth) {
     return Column(
@@ -666,32 +823,6 @@ Widget _summaryCard(
       ],
     );
   }
-
-  Widget _buildCardGrid() {
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 25,
-        mainAxisSpacing: 30,
-        childAspectRatio: 0.85, 
-      ),
-      itemCount: cards.length,
-      itemBuilder: (context, index) => BudgetCardWidget(data: cards[index]),
-    );
-  }
-}
-
-class CardData {
-  final String name;
-  int spent; 
-  final int total;
-
-  CardData({required this.name, required this.spent, required this.total});
-
-  bool get isOverBudget => spent > total;
-  double get spentPercent => (spent / total).clamp(0.0, 1.0);
 }
 
 class BudgetCardWidget extends StatefulWidget {
@@ -702,8 +833,6 @@ class BudgetCardWidget extends StatefulWidget {
 }
 
 class _BudgetCardWidgetState extends State<BudgetCardWidget> {
-  bool _isHovered = false;
-  bool _isButtonPressed = false;
 
   String _formatCurrency(int amount) {
     return amount.toString().replaceAllMapped(
@@ -730,7 +859,6 @@ class _BudgetCardWidgetState extends State<BudgetCardWidget> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 카드사 로고 및 이름
             Row(
               children: [
                 Container(
@@ -758,10 +886,8 @@ class _BudgetCardWidgetState extends State<BudgetCardWidget> {
               ],
             ),
             
-            // 차트 영역
             Expanded(child: Center(child: _buildDonutChart())),
             
-            // 하단 금액 정보 (지출 금액 텍스트 제거됨)
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.baseline,
@@ -799,7 +925,7 @@ class _BudgetCardWidgetState extends State<BudgetCardWidget> {
               shape: BoxShape.circle,
               color: Color(0xFFE0E5EC),
               boxShadow: [
-                BoxShadow(color: Color(0xFFA3B1C6), offset: Offset(4, 4), blurRadius: 8), // 오타 수정 완료
+                BoxShadow(color: Color(0xFFA3B1C6), offset: Offset(4, 4), blurRadius: 8),
                 BoxShadow(color: Colors.white, offset: Offset(-4, -4), blurRadius: 8)
               ],
             ),
