@@ -40,20 +40,21 @@ class Expense {
 class CardData {
   final String name;
   final String logoPath;
-  int spent; 
   final int total;
-  final List<Expense> expenses; // 지출 내역 리스트 추가
+  final List<Expense> expenses; // 지출 내역 리스트
 
   CardData({
     required this.name, 
     required this.logoPath,
-    required this.spent, 
     required this.total,
     List<Expense>? expenses,
   }) : expenses = expenses ?? [];
 
+  // 💡 핵심 1: spent 변수를 없애고, expenses 리스트의 합계를 자동으로 구하도록 변경!
+  int get spent => expenses.fold(0, (sum, item) => sum + item.amount);
+
   bool get isOverBudget => spent > total;
-  double get spentPercent => (spent / total).clamp(0.0, 1.0);
+  double get spentPercent => total > 0 ? (spent / total).clamp(0.0, 1.0) : 0.0;
 }
 
 class MultiCardScreen extends StatefulWidget {
@@ -64,11 +65,32 @@ class MultiCardScreen extends StatefulWidget {
 }
 
 class _MultiCardScreenState extends State<MultiCardScreen> {
+  // 💡 핵심 2: spent 값을 직접 적는 대신, 실제 지출 내역 데이터(Expense)를 넣어줌!
   final List<CardData> cards = [
-    CardData(name: '롯데카드', logoPath: 'assets/images/lotte.png', spent: 106500, total: 150000),
-    CardData(name: '국민카드', logoPath: 'assets/images/kb.png', spent: 170000, total: 150000),
-    CardData(name: '하나카드',logoPath: 'assets/images/hana.png', spent: 35000, total: 150000),
-    CardData(name: '삼성카드', logoPath: 'assets/images/samsung.png', spent: 150000, total: 150000),
+    CardData(
+      name: '롯데카드', 
+      logoPath: 'assets/images/lotte.png', 
+      total: 150000,
+      expenses: [],
+    ),
+    CardData(
+      name: '국민카드', 
+      logoPath: 'assets/images/kb.png', 
+      total: 150000,
+      expenses: [],
+    ),
+    CardData(
+      name: '하나카드', 
+      logoPath: 'assets/images/hana.png', 
+      total: 150000,
+      expenses: [],
+    ),
+    CardData(
+      name: '삼성카드', 
+      logoPath: 'assets/images/samsung.png', 
+      total: 150000,
+      expenses: [],
+    ),
   ];
 
   String _formatCurrency(int amount) {
@@ -217,8 +239,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                           int amount = int.tryParse(amountController.text.replaceAll(',', '')) ?? 0;
                           if (amount > 0) {
                             setState(() {
-                              // 카드 사용금액 증가 및 지출 내역 리스트 최상단에 새 항목 추가
-                              cards[selectedCardIndex].spent += amount;
+                              // 💡 핵심 3: spent += amount 를 삭제함! 리스트에 내역만 넣으면 자동 반영!
                               cards[selectedCardIndex].expenses.insert(
                                 0, 
                                 Expense(amount: amount, date: DateTime.now())
@@ -285,7 +306,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
         return StatefulBuilder(
           builder: (context, setModalState) {
             return Container(
-              height: MediaQuery.of(context).size.height * 0.7, // 화면 70% 차지
+              height: MediaQuery.of(context).size.height * 0.7, 
               padding: const EdgeInsets.all(24),
               decoration: const BoxDecoration(
                 color: Color(0xFFE0E5EC),
@@ -308,7 +329,6 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                   ),
                   const SizedBox(height: 24),
                   
-                  // 다이얼로그 타이틀 (카드 이름)
                   Text(
                     card.name,
                     style: const TextStyle(
@@ -319,7 +339,6 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // 지출 내역 리스트
                   Expanded(
                     child: card.expenses.isEmpty
                         ? const Center(
@@ -340,7 +359,6 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                                 padding: const EdgeInsets.only(bottom: 20),
                                 child: Row(
                                   children: [
-                                    // 날짜 
                                     SizedBox(
                                       width: 60,
                                       child: Text(
@@ -351,10 +369,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                                         ),
                                       ),
                                     ),
-                                    
                                     const SizedBox(width: 16),
-
-                                    // 지출 금액
                                     Expanded(
                                       child: Text(
                                         '${_formatCurrency(expense.amount)}원',
@@ -366,17 +381,14 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                                         ),
                                       ),
                                     ),
-
                                     const SizedBox(width: 16),
-
-                                    // 삭제(X) 버튼
                                     GestureDetector(
                                       onTap: () {
                                         setState(() {
-                                          card.spent -= expense.amount; // 사용금액 차감
-                                          card.expenses.removeAt(index); // 내역 삭제
+                                          // 💡 핵심 3: spent -= amount 삭제! 리스트에서 지우기만 하면 됨!
+                                          card.expenses.removeAt(index); 
                                         });
-                                        setModalState(() {}); // 모달 상태 갱신
+                                        setModalState(() {}); 
                                       },
                                       child: Container(
                                         padding: const EdgeInsets.all(8),
@@ -402,7 +414,6 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
     );
   }
 
-  // 기존 요약 모달 유지
   void _showSummaryModal(BuildContext context) {
       final totalSpent = cards.fold<int>(0, (sum, card) => sum + card.spent);
       final totalBudget = cards.fold<int>(0, (sum, card) => sum + card.total);
