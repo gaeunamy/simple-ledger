@@ -404,156 +404,163 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
 
   // 기존 요약 모달 유지
   void _showSummaryModal(BuildContext context) {
-    final totalSpent = cards.fold<int>(0, (sum, card) => sum + card.spent);
-    final totalBudget = cards.fold<int>(0, (sum, card) => sum + card.total);
-    final totalRemaining = totalBudget - totalSpent;
+      final totalSpent = cards.fold<int>(0, (sum, card) => sum + card.spent);
+      final totalBudget = cards.fold<int>(0, (sum, card) => sum + card.total);
+      final totalRemaining = totalBudget - totalSpent;
 
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (_) {
-        return Container(
-          height: MediaQuery.of(context).size.height * 0.8,
-          padding: const EdgeInsets.all(24),
-          decoration: const BoxDecoration(
-            color: Color(0xFFE0E5EC),
-            borderRadius: BorderRadius.vertical(
-              top: Radius.circular(32),
+      showModalBottomSheet(
+        context: context,
+        backgroundColor: Colors.transparent,
+        isScrollControlled: true,
+        builder: (_) {
+          return Container(
+            height: MediaQuery.of(context).size.height * 0.8,
+            padding: const EdgeInsets.all(24),
+            decoration: const BoxDecoration(
+              color: Color(0xFFE0E5EC),
+              borderRadius: BorderRadius.vertical(
+                top: Radius.circular(32),
+              ),
             ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 48,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: Colors.grey,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              const Text(
-                '요약',
-                style: TextStyle(
-                  color: Color(0xFF2D3142),
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(
-                    child: _summaryCard(
-                      '총 소비',
-                      '${_formatCurrency(totalSpent)}원',
-                      const Color(0xFF2D3142),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 48,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: Colors.grey,
+                      borderRadius: BorderRadius.circular(999),
                     ),
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: _summaryCard(
-                    '남은 예산',
-                    '${_formatCurrency(totalRemaining)}원',
-                    const Color(0xFF2D3142),
-                  ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 40),
-              const Text(
-                '카드별 소비',
-                style: TextStyle(
-                  color: Color(0xFF9098B1),
-                  fontSize: 16,
                 ),
-              ),
-              const SizedBox(height: 20),
-              Expanded(
-                child: ListView.builder(
-                  itemCount: cards.length,
-                  itemBuilder: (_, index) {
-                    final card = cards[index];
-                    final remain = card.total - card.spent;
-
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 20),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 28,
-                            height: 28,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFE0E5EC),
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 3),
-                                BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 3),
-                              ],
-                            ),
-                            alignment: Alignment.center,
-                            clipBehavior: Clip.antiAlias,
-                            child: Image.asset(
-                              card.logoPath,
-                              width: 20,
-                              height: 20,
-                              fit: BoxFit.contain,
-                              errorBuilder: (context, error, stackTrace) {
-                                return const Icon(Icons.credit_card, size: 12, color: Color(0xFF2F60FF));
-                              },
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  card.name,
-                                  style: const TextStyle(
-                                    color: Color(0xFF9098B1),
-                                    fontSize: 14,
-                                  ),
-                                ),
-                                Text(
-                                  '${_formatCurrency(card.spent)}원',
-                                  style: const TextStyle(
-                                    color: Color(0xFF2D3142),
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Text(
-                            remain >= 0
-                                ? '${_formatCurrency(remain)}원 남음'
-                                : '-${_formatCurrency(remain.abs())}원 초과',
-                            style: TextStyle(
-                              color: remain >= 0
-                                  ? const Color(0xFF2F60FF)
-                                  : Colors.redAccent,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
+                const SizedBox(height: 24),
+                const Text(
+                  '요약',
+                  style: TextStyle(
+                    color: Color(0xFF2D3142),
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _summaryCard(
+                        '총 소비',
+                        '${_formatCurrency(totalSpent)}원',
+                        const Color(0xFF2D3142),
                       ),
-                    );
-                  },
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: _summaryCard(
+                      '남은 예산',
+                      '${_formatCurrency(totalRemaining)}원',
+                      const Color(0xFF2D3142),
+                    ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
+                const SizedBox(height: 40),
+                const Text(
+                  '카드별 소비',
+                  style: TextStyle(
+                    color: Color(0xFF9098B1),
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: cards.length,
+                    itemBuilder: (_, index) {
+                      final card = cards[index];
+                      final remain = card.total - card.spent;
+
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 20),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 28,
+                              height: 28,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE0E5EC),
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 3),
+                                  BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 3),
+                                ],
+                              ),
+                              alignment: Alignment.center,
+                              clipBehavior: Clip.antiAlias,
+                              child: Transform.scale(
+                                scale: card.name == '국민카드' 
+                                    ? 1.8 
+                                    : card.name == '삼성카드' 
+                                        ? 1.3 
+                                        : 1.0, 
+                                child: Image.asset(
+                                  card.logoPath,
+                                  width: 20,
+                                  height: 20,
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return const Icon(Icons.credit_card, size: 12, color: Color(0xFF2F60FF));
+                                  },
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    card.name,
+                                    style: const TextStyle(
+                                      color: Color(0xFF9098B1),
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  Text(
+                                    '${_formatCurrency(card.spent)}원',
+                                    style: const TextStyle(
+                                      color: Color(0xFF2D3142),
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Text(
+                              remain >= 0
+                                  ? '${_formatCurrency(remain)}원 남음'
+                                  : '-${_formatCurrency(remain.abs())}원 초과',
+                              style: TextStyle(
+                                color: remain >= 0
+                                    ? const Color(0xFF2F60FF)
+                                    : Colors.redAccent,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      );
+    }
 
   @override
   Widget build(BuildContext context) {
@@ -889,14 +896,21 @@ class _BudgetCardWidgetState extends State<BudgetCardWidget> {
                   ),
                   alignment: Alignment.center,
                   clipBehavior: Clip.antiAlias,
-                  child: Image.asset(
-                    widget.data.logoPath,
-                    width: 20,
-                    height: 20,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return const Icon(Icons.credit_card, size: 16, color: Color(0xFF2F60FF));
-                    },
+                  child: Transform.scale(
+                    scale: widget.data.name == '국민카드' 
+                        ? 1.8 
+                        : widget.data.name == '삼성카드' 
+                            ? 1.3 
+                            : 1.0,
+                    child: Image.asset(
+                      widget.data.logoPath,
+                      width: 20,
+                      height: 20,
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) {
+                        return const Icon(Icons.credit_card, size: 16, color: Color(0xFF2F60FF));
+                      },
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
