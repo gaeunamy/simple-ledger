@@ -222,6 +222,170 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
     );
   }
 
+String _formatCurrency(int amount) {
+  return amount.toString().replaceAllMapped(
+    RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+    (m) => '${m[1]},',
+  );
+}
+
+void _showSummaryModal(BuildContext context) {
+  final totalSpent =
+      cards.fold<int>(0, (sum, card) => sum + card.spent);
+
+  final totalBudget =
+      cards.fold<int>(0, (sum, card) => sum + card.total);
+
+  final totalRemaining = totalBudget - totalSpent;
+
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: Colors.transparent,
+    isScrollControlled: true,
+    builder: (_) {
+      return Container(
+        height: MediaQuery.of(context).size.height * 0.8,
+        padding: const EdgeInsets.all(24),
+        decoration: const BoxDecoration(
+          color: Color(0xFFE0E5EC),
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(32),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 48,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: Colors.grey,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
+            const Text(
+              '요약',
+              style: TextStyle(
+                color: Color(0xFF2D3142),
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
+            Row(
+              children: [
+                Expanded(
+                  child: _summaryCard(
+                    '총 소비',
+                    '${_formatCurrency(totalSpent)}원',
+                    const Color(0xFF2D3142),
+                    subText: '/ ${_formatCurrency(totalBudget)}원',
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _summaryCard(
+                  '남은 예산',
+                  '${_formatCurrency(totalRemaining)}원',
+                  const Color(0xFF2D3142),
+                ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 40),
+
+            const Text(
+              '카드별 소비',
+              style: TextStyle(
+                color: Color(0xFF9098B1),
+                fontSize: 16,
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            Expanded(
+              child: ListView.builder(
+                itemCount: cards.length,
+                itemBuilder: (_, index) {
+                  final card = cards[index];
+                  final remain = card.total - card.spent;
+
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 20),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 28,
+                          backgroundColor:
+                              const Color(0xFF2A2A2D),
+                          child: Text(
+                            card.name[0],
+                            style: const TextStyle(
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(width: 16),
+
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                card.name,
+                                style: const TextStyle(
+                                  color: Color(0xFF9098B1),
+                                  fontSize: 14,
+                                ),
+                              ),
+                              Text(
+                                '${_formatCurrency(card.spent)}원',
+                                style: const TextStyle(
+                                  color: Color(0xFF2D3142),
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        Text(
+                          remain >= 0
+                              ? '${_formatCurrency(remain)}원 남음'
+                              : '-${_formatCurrency(remain.abs())}원 초과',
+                          style: TextStyle(
+                            color: remain >= 0
+                                ? const Color(0xFF2F60FF)
+                                : Colors.redAccent,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      );
+    },
+  );
+}
+
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
@@ -242,27 +406,33 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
               ),
             ),
             const SizedBox(width: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: const Color(0xFFE0E5EC),
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  const BoxShadow(
-                    color: Colors.white,
-                    offset: Offset(-2, -2),
-                    blurRadius: 4,
-                  ),
-                  BoxShadow(
-                    color: const Color(0xFFA3B1C6).withOpacity(0.5),
-                    offset: const Offset(2, 2),
-                    blurRadius: 4,
-                  ),
-                ],
-              ),
-              child: const Text(
-                '요약',
-                style: TextStyle(fontSize: 12, color: Color(0xFF9098B1), fontWeight: FontWeight.bold),
+            GestureDetector(
+              onTap: () => _showSummaryModal(context),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE0E5EC),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    const BoxShadow(
+                      color: Colors.white,
+                      offset: Offset(-2, -2),
+                      blurRadius: 4,
+                    ),
+                    BoxShadow(
+                      color: const Color(0xFFA3B1C6).withOpacity(0.5),
+                      offset: const Offset(2, 2),
+                      blurRadius: 4,
+                    ),
+                  ],
+                ),
+                child: const Text(
+                  '요약',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF9098B1), fontWeight: FontWeight.bold),
+                ),
               ),
             ),
           ],
@@ -337,6 +507,75 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
       ),
     );
   }
+
+Widget _summaryCard(
+  String title,
+  String value,
+  Color valueColor, {
+  String? subText,
+}) {
+  return Container(
+    padding: const EdgeInsets.all(20),
+    decoration: BoxDecoration(
+      color: const Color(0xFFE0E5EC),
+      borderRadius: BorderRadius.circular(24),
+      boxShadow: [
+        const BoxShadow(
+          color: Colors.white,
+          offset: Offset(-6, -6),
+          blurRadius: 12,
+        ),
+        BoxShadow(
+          color: const Color(0xFFA3B1C6).withOpacity(0.5),
+          offset: const Offset(6, 6),
+          blurRadius: 12,
+        ),
+      ],
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 14,
+            color: Color(0xFF9098B1),
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: valueColor,
+              ),
+            ),
+
+            if (subText != null) ...[
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  subText,
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: Color(0xFF9098B1),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ],
+    ),
+  );
+}
 
   Widget _buildProgressSection(double progress, int currentDay, int currentMonth) {
     return Column(
@@ -479,6 +718,7 @@ class BudgetCardWidget extends StatefulWidget {
 
 class _BudgetCardWidgetState extends State<BudgetCardWidget> {
   bool _isHovered = false;
+  bool _isButtonPressed = false;
 
   String _formatCurrency(int amount) {
     return amount.toString().replaceAllMapped(
@@ -487,102 +727,79 @@ class _BudgetCardWidgetState extends State<BudgetCardWidget> {
 
   @override
   Widget build(BuildContext context) {
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        decoration: BoxDecoration(
-          color: const Color(0xFFE0E5EC),
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: _isHovered
-              ? [
-                  BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.4), offset: const Offset(3, 3), blurRadius: 6),
-                  const BoxShadow(color: Colors.white, offset: Offset(-3, -3), blurRadius: 6)
-                ]
-              : [
-                  BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.6), offset: const Offset(8, 8), blurRadius: 16),
-                  const BoxShadow(color: Colors.white, offset: Offset(-8, -8), blurRadius: 16)
-                ],
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 28,
-                    height: 28,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE0E5EC),
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 3),
-                        BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 3),
-                      ],
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      widget.data.name[0], 
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF2F60FF)),
-                    ),
+    // 1. MouseRegion 제거 (카드 전체의 상호작용 삭제)
+    return Container(
+      // 2. AnimatedContainer를 일반 Container로 변경 (상태 변화 애니메이션 제거)
+      decoration: BoxDecoration(
+        color: const Color(0xFFE0E5EC),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+              color: const Color(0xFFA3B1C6).withOpacity(0.6),
+              offset: const Offset(8, 8),
+              blurRadius: 16),
+          const BoxShadow(
+              color: Colors.white, offset: Offset(-8, -8), blurRadius: 16)
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE0E5EC),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 3),
+                      BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 3),
+                    ],
                   ),
-                  const SizedBox(width: 8),
-                  Text(
-                    widget.data.name,
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
-                  ),
-                ],
-              ),
-              
-              Expanded(child: Center(child: _buildDonutChart())),
-              
-              const Center(
-                child: Text('지출 금액', style: TextStyle(fontSize: 13, color: Color(0xFF9098B1), fontWeight: FontWeight.w600)),
-              ),
-              const SizedBox(height: 6),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
-                children: [
-                  Text(
-                    '${_formatCurrency(widget.data.spent)}원',
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
-                  ),
-                  const Text(
-                    ' / ',
-                    style: TextStyle(fontSize: 13, color: Color(0xFF9098B1)),
-                  ),
-                  Text(
-                    '${_formatCurrency(widget.data.total)}원',
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF9098B1)),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              
-              Container(
-                width: double.infinity,
-                height: 48, 
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFD1D9E6), 
-                  borderRadius: BorderRadius.circular(16), 
-                ),
-                child: const Text(
-                  '상세보기', 
-                  style: TextStyle(
-                    fontSize: 14, 
-                    fontWeight: FontWeight.bold, 
-                    color: Color(0xFF9098B1), 
+                  alignment: Alignment.center,
+                  child: Text(
+                    widget.data.name[0],
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF2F60FF)),
                   ),
                 ),
-              ),
-            ],
-          ),
+                const SizedBox(width: 8),
+                Text(
+                  widget.data.name,
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
+                ),
+              ],
+            ),
+            
+            Expanded(child: Center(child: _buildDonutChart())),
+            
+            const Center(
+              child: Text('지출 금액', style: TextStyle(fontSize: 13, color: Color(0xFF9098B1), fontWeight: FontWeight.w600)),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  '${_formatCurrency(widget.data.spent)}원',
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
+                ),
+                const Text(
+                  ' / ',
+                  style: TextStyle(fontSize: 13, color: Color(0xFF9098B1)),
+                ),
+                Text(
+                  '${_formatCurrency(widget.data.total)}원',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF9098B1)),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
