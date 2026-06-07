@@ -23,6 +23,14 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+      builder: (context, child) {
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: const TextScaler.linear(1.0), 
+          ),
+          child: child!,
+        );
+      },
       theme: ThemeData.light().copyWith(
         scaffoldBackgroundColor: const Color(0xFFE0E5EC), 
         appBarTheme: const AppBarTheme(
@@ -35,7 +43,6 @@ class MyApp extends StatelessWidget {
   }
 }
 
-// 지출 내역 모델
 @HiveType(typeId: 0)
 class Expense {
   @HiveField(0)
@@ -52,7 +59,6 @@ class Expense {
   }
 }
 
-// 카드 데이터 모델
 @HiveType(typeId: 1)
 class CardData {
   @HiveField(0)
@@ -97,10 +103,10 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
 
     if (cardBox.isEmpty) {
       cardBox.addAll([
-        CardData(name: '롯데카드', logoPath: 'assets/images/lotte.png', total: 150000, expenses: []),
-        CardData(name: '국민카드', logoPath: 'assets/images/kb.png', total: 150000, expenses: []),
-        CardData(name: '하나카드', logoPath: 'assets/images/hana.png', total: 150000, expenses: []),
-        CardData(name: '삼성카드', logoPath: 'assets/images/samsung.png', total: 150000, expenses: []),
+        CardData(name: '롯데카드', logoPath: 'assets/images/lotte.png', total: 300000, expenses: []),
+        CardData(name: '국민카드', logoPath: 'assets/images/kb.png', total: 300000, expenses: []),
+        CardData(name: '하나카드', logoPath: 'assets/images/hana.png', total: 300000, expenses: []),
+        CardData(name: '신한카드', logoPath: 'assets/images/shinhan.png', total: 150000, expenses: []),
       ]);
     }
 
@@ -114,7 +120,6 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
     );
   }
 
-  // 지출 내역 추가 팝업 모달
   void _showAddExpenseModal(BuildContext context, {int initialCardIndex = 0}) {
     int selectedCardIndex = initialCardIndex;
     final TextEditingController amountController = TextEditingController();
@@ -128,7 +133,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
           builder: (context, setModalState) {
             return Padding(
               padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).viewInsets.bottom, 
+                bottom: MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).padding.bottom, 
               ),
               child: Container(
                 padding: const EdgeInsets.all(24),
@@ -310,7 +315,6 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
     );
   }
 
-  // 특정 카드 지출 내역 모달
   void _showCardDetailModal(BuildContext context, CardData card) {
       showModalBottomSheet(
         context: context,
@@ -343,7 +347,6 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                     ),
                     const SizedBox(height: 24),
                     
-                    // 추가 버튼
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -357,8 +360,8 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                         ),
                         GestureDetector(
                           onTap: () {
-                            Navigator.pop(context); // 현재 상세 모달 닫기
-                            _showAddExpenseModal(context, initialCardIndex: cards.indexOf(card)); // 지출 추가 모달 열기
+                            Navigator.pop(context); 
+                            _showAddExpenseModal(context, initialCardIndex: cards.indexOf(card)); 
                           },
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -543,8 +546,8 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                         child: Row(
                           children: [
                             Container(
-                              width: 28,
-                              height: 28,
+                              width: 24, 
+                              height: 24,
                               decoration: BoxDecoration(
                                 color: const Color(0xFFE0E5EC),
                                 shape: BoxShape.circle,
@@ -563,8 +566,8 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                                         : 1.0, 
                                 child: Image.asset(
                                   card.logoPath,
-                                  width: 20,
-                                  height: 20,
+                                  width: 16, 
+                                  height: 16,
                                   fit: BoxFit.contain,
                                   errorBuilder: (context, error, stackTrace) {
                                     return const Icon(Icons.credit_card, size: 12, color: Color(0xFF2F60FF));
@@ -572,7 +575,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 16),
+                            const SizedBox(width: 12),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -581,14 +584,14 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                                     card.name,
                                     style: const TextStyle(
                                       color: Color(0xFF9098B1),
-                                      fontSize: 14,
+                                      fontSize: 12, 
                                     ),
                                   ),
                                   Text(
                                     '${_formatCurrency(card.spent)}원',
                                     style: const TextStyle(
                                       color: Color(0xFF2D3142),
-                                      fontSize: 18,
+                                      fontSize: 16, 
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
@@ -603,7 +606,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                                 color: remain >= 0
                                     ? const Color(0xFF2F60FF)
                                     : Colors.redAccent,
-                                fontSize: 14,
+                                fontSize: 13,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -643,10 +646,10 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
             GestureDetector(
               onTap: () => _showSummaryModal(context),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), 
                 decoration: BoxDecoration(
                   color: const Color(0xFFE0E5EC),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(12),
                   boxShadow: [
                     const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 4),
                     BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 4),
@@ -654,56 +657,57 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                 ),
                 child: const Text(
                   '요약',
-                  style: TextStyle(fontSize: 14, color: Color(0xFF2D3142), fontWeight: FontWeight.bold),
+                  style: TextStyle(fontSize: 12, color: Color(0xFF2D3142), fontWeight: FontWeight.bold), 
                 ),
               ),
             ),
           ],
         ),
       ),
-      body: SingleChildScrollView(
-      child: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 5), 
-            _buildProgressSection(progressPercent, now.day, currentMonth),
-            const SizedBox(height: 60),
-            
-            // 카드 그리드 뷰
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 25,
-                mainAxisSpacing: 30,
-                childAspectRatio: 0.85, 
+      body: SafeArea(
+        bottom: true,
+        child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 5), 
+              _buildProgressSection(progressPercent, now.day, currentMonth),
+              const SizedBox(height: 55), 
+              
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 18, 
+                  mainAxisSpacing: 22, 
+                  childAspectRatio: 0.85, 
+                ),
+                itemCount: cards.length,
+                itemBuilder: (context, index) => GestureDetector(
+                  onTap: () => _showCardDetailModal(context, cards[index]), 
+                  child: BudgetCardWidget(data: cards[index]),
+                ),
               ),
-              itemCount: cards.length,
-              itemBuilder: (context, index) => GestureDetector(
-                onTap: () => _showCardDetailModal(context, cards[index]), 
-                child: BudgetCardWidget(data: cards[index]),
-              ),
-            ),
-            
-            const SizedBox(height: 60),
-            
-            Center(
-              child: GestureDetector(
-                onTap: () => _showAddExpenseModal(context),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    gradient: const LinearGradient(
-                      colors: [
-                        Color(0xFF4A7DFF),
-                        Color(0xFF1A4BFF),
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
+              
+              const SizedBox(height: 55),
+              
+              Center(
+                child: GestureDetector(
+                  onTap: () => _showAddExpenseModal(context),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      gradient: const LinearGradient(
+                        colors: [
+                          Color(0xFF4A7DFF),
+                          Color(0xFF1A4BFF),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                     ),
                     boxShadow: [
                       BoxShadow(
@@ -733,6 +737,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
             const SizedBox(height: 40),
           ],
         ),
+      ),
       ),
       ),
     );
@@ -811,7 +816,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 44), 
+        const SizedBox(height: 40), 
         
         LayoutBuilder(
           builder: (context, constraints) {
@@ -942,8 +947,8 @@ class _BudgetCardWidgetState extends State<BudgetCardWidget> {
             Row(
               children: [
                 Container(
-                  width: 28,
-                  height: 28,
+                  width: 24, 
+                  height: 24,
                   decoration: BoxDecoration(
                     color: const Color(0xFFE0E5EC),
                     shape: BoxShape.circle,
@@ -962,44 +967,26 @@ class _BudgetCardWidgetState extends State<BudgetCardWidget> {
                             : 1.0,
                     child: Image.asset(
                       widget.data.logoPath,
-                      width: 20,
-                      height: 20,
+                      width: 16, 
+                      height: 16,
                       fit: BoxFit.contain,
                       errorBuilder: (context, error, stackTrace) {
-                        return const Icon(Icons.credit_card, size: 16, color: Color(0xFF2F60FF));
+                        return const Icon(Icons.credit_card, size: 14, color: Color(0xFF2F60FF));
                       },
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6), 
                 Text(
                   widget.data.name,
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)), // 12 -> 14로 크기 증가!
                 ),
               ],
             ),
+
+            const SizedBox(height: 15),
             
             Expanded(child: Center(child: _buildDonutChart())),
-            
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
-              children: [
-                Text(
-                  '${_formatCurrency(widget.data.spent)}원',
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
-                ),
-                const Text(
-                  ' / ',
-                  style: TextStyle(fontSize: 14, color: Color(0xFF9098B1)),
-                ),
-                Text(
-                  '${_formatCurrency(widget.data.total)}원',
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF9098B1)),
-                ),
-              ],
-            ),
           ],
         ),
       ),
@@ -1012,8 +999,8 @@ class _BudgetCardWidgetState extends State<BudgetCardWidget> {
         alignment: Alignment.center,
         children: [
           Container(
-            width: 120,
-            height: 120,
+            width: 100, 
+            height: 100,
             decoration: const BoxDecoration(
               shape: BoxShape.circle,
               color: Color(0xFFE0E5EC),
@@ -1024,29 +1011,35 @@ class _BudgetCardWidgetState extends State<BudgetCardWidget> {
             ),
           ),
           SizedBox(
-            width: 120,
-            height: 120,
+            width: 100,
+            height: 100,
             child: CircularProgressIndicator(
               value: widget.data.spentPercent,
-              strokeWidth: 8,
+              strokeWidth: 7, 
               valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF2F60FF)),
               strokeCap: StrokeCap.round,
             ),
           ),
           if (widget.data.isOverBudget)
             SizedBox(
-              width: 120,
-              height: 120,
+              width: 100,
+              height: 100,
               child: CircularProgressIndicator(
                 value: ((widget.data.spent - widget.data.total) / widget.data.total).clamp(0.0, 1.0),
-                strokeWidth: 8,
+                strokeWidth: 7,
                 valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFF453A)),
                 strokeCap: StrokeCap.round,
               ),
             ),
-          Text(
-            _formatCurrency(widget.data.spent),
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
+          SizedBox(
+            width: 70, 
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                _formatCurrency(widget.data.spent),
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)), // 14 -> 16으로 크기 증가!
+              ),
+            ),
           ),
         ],
       ),
