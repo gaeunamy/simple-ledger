@@ -51,7 +51,18 @@ class Expense {
   @HiveField(1)
   final DateTime date;
 
-  Expense({required this.amount, required this.date});
+  @HiveField(2)
+  final int? installmentMonths; 
+
+  @HiveField(3)
+  final bool isInstallment; 
+
+  Expense({
+    required this.amount, 
+    required this.date, 
+    this.installmentMonths, 
+    this.isInstallment = false
+  });
 
   String get formattedDate {
     const weekdays = ['월', '화', '수', '목', '금', '토', '일'];
@@ -80,9 +91,42 @@ class CardData {
     List<Expense>? expenses,
   }) : expenses = expenses ?? [];
 
-  int get spent => expenses.fold(0, (sum, item) => sum + item.amount);
-  bool get isOverBudget => spent > total;
-  double get spentPercent => total > 0 ? (spent / total).clamp(0.0, 1.0) : 0.0;
+  int getSpent(bool isPerformanceMode) {
+    final now = DateTime.now();
+
+    return expenses.fold(0, (sum, item) {
+      if (isPerformanceMode) {
+        if (item.isInstallment && item.installmentMonths == null) {
+          return sum; 
+        }
+        if (item.date.year == now.year && item.date.month == now.month) {
+          return sum + item.amount; 
+        }
+        return sum;
+      } else {
+        if (item.isInstallment) {
+          if (item.installmentMonths == null) {
+            if (item.date.year == now.year && item.date.month == now.month) {
+              return sum + item.amount;
+            }
+          } else {
+            int monthsPassed = (now.year - item.date.year) * 12 + (now.month - item.date.month);
+            if (monthsPassed >= 0 && monthsPassed < item.installmentMonths!) {
+              return sum + (item.amount ~/ item.installmentMonths!);
+            }
+          }
+        } else {
+          if (item.date.year == now.year && item.date.month == now.month) {
+            return sum + item.amount;
+          }
+        }
+        return sum;
+      }
+    });
+  }
+
+  bool isOverBudget(bool isPerformanceMode) => getSpent(isPerformanceMode) > total;
+  double getSpentPercent(bool isPerformanceMode) => total > 0 ? (getSpent(isPerformanceMode) / total).clamp(0.0, 1.0) : 0.0;
 }
 
 class MultiCardScreen extends StatefulWidget {
@@ -92,13 +136,19 @@ class MultiCardScreen extends StatefulWidget {
   State<MultiCardScreen> createState() => _MultiCardScreenState();
 }
 
-class _MultiCardScreenState extends State<MultiCardScreen> {
+class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingObserver {
   late Box<CardData> cardBox;
   late List<CardData> cards;
+
+  final FocusNode _amountFocusNode = FocusNode();
+  bool _isExpenseModalOpen = false;
+
+  bool _isPerformanceMode = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     cardBox = Hive.box<CardData>('myCardsBox');
 
     if (cardBox.isEmpty) {
@@ -115,6 +165,24 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
     cards = cardBox.values.toList();
   }
 
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _amountFocusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _isExpenseModalOpen) {
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted && _isExpenseModalOpen) {
+          _amountFocusNode.requestFocus();
+        }
+      });
+    }
+  }
+
   String _formatCurrency(int amount) {
     return amount.toString().replaceAllMapped(
       RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
@@ -123,9 +191,14 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
   }
 
   void _showAddExpenseModal(BuildContext context, {int initialCardIndex = 0}) {
+    _isExpenseModalOpen = true;
     int selectedCardIndex = initialCardIndex;
-    // 처음 열릴 때 선택된 카드가 4번(삼성)이나 5번(우리)이면 자동으로 펼쳐지게 설정
     bool isExpanded = initialCardIndex >= 4; 
+    
+    bool isInstallmentActive = false; 
+    bool showInstallmentPicker = false; 
+    int? selectedInstallment; 
+
     final TextEditingController amountController = TextEditingController();
 
     showModalBottomSheet(
@@ -179,7 +252,6 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                       ),
                       child: Row(
                         children: [
-                          // isExpanded가 true면 모든 카드, false면 앞의 4개만 보여줌
                           ...List.generate(isExpanded ? cards.length : 4, (index) {
                             final isSelected = selectedCardIndex == index;
                             return Expanded(
@@ -209,7 +281,6 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                               ),
                             );
                           }),
-                          // 아직 펼쳐지지 않았을 때 '+' 버튼 노출
                           if (!isExpanded)
                             Expanded(
                               child: GestureDetector(
@@ -234,45 +305,186 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                     
                     const SizedBox(height: 32),
                     
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
+                    // 🔥 피커에 의한 레이아웃 밀림 방지를 위해 Stack으로 감쌈
+                    Stack(
+                      clipBehavior: Clip.none, // 피커가 공중으로 온전히 튀어나올 수 있도록 설정
                       children: [
-                        Expanded(
-                          child: TextField(
-                            controller: amountController,
-                            keyboardType: TextInputType.number,
-                            style: const TextStyle(
-                              fontSize: 16, 
-                              color: Color(0xFF2D3142), 
-                              fontWeight: FontWeight.bold,
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            GestureDetector(
+                              onTap: () {
+                                setModalState(() {
+                                  if (isInstallmentActive) {
+                                    isInstallmentActive = false;
+                                    selectedInstallment = null;
+                                    showInstallmentPicker = false;
+                                  } else {
+                                    isInstallmentActive = true;
+                                  }
+                                });
+                              },
+                              child: Container(
+                                width: 70,
+                                height: 40,
+                                margin: const EdgeInsets.only(left: 6),
+                                alignment: Alignment.center,
+                                decoration: isInstallmentActive
+                                    ? BoxDecoration(
+                                        color: const Color(0xFFE0E5EC),
+                                        borderRadius: BorderRadius.circular(12),
+                                        boxShadow: [
+                                          const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 3),
+                                          BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.4), offset: const Offset(2, 2), blurRadius: 3),
+                                        ],
+                                      )
+                                    : BoxDecoration(
+                                        color: const Color(0xFFD1D9E6),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                child: Text(
+                                  '할부',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    // 🔥 할부가 활성화(ON) 되면 글자색을 파란색으로 변경
+                                    color: isInstallmentActive ? const Color(0xFF2F60FF) : const Color(0xFF9098B1),
+                                  ),
+                                ),
+                              ),
                             ),
-                            decoration: const InputDecoration(
-                              hintText: '소비 금액',
-                              hintStyle: TextStyle(
+                            
+                            if (isInstallmentActive) ...[
+                              const SizedBox(width: 12),
+                              GestureDetector(
+                                onTap: () {
+                                  setModalState(() {
+                                    showInstallmentPicker = !showInstallmentPicker;
+                                  });
+                                },
+                                child: Container(
+                                  width: 80,
+                                  height: 40,
+                                  alignment: Alignment.center,
+                                  decoration: selectedInstallment != null
+                                      ? BoxDecoration(
+                                          color: const Color(0xFFE0E5EC),
+                                          borderRadius: BorderRadius.circular(12),
+                                          boxShadow: [
+                                            const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 3),
+                                            BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.4), offset: const Offset(2, 2), blurRadius: 3),
+                                          ],
+                                        )
+                                      : BoxDecoration(
+                                          color: const Color(0xFFD1D9E6),
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                  child: Text(
+                                    selectedInstallment != null ? '$selectedInstallment개월' : '개월',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                      color: selectedInstallment != null ? const Color(0xFF2F60FF) : const Color(0xFF9098B1),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                            
+                            const SizedBox(width: 12),
+                            
+                            Expanded(
+                              child: TextField(
+                                controller: amountController,
+                                focusNode: _amountFocusNode,
+                                keyboardType: TextInputType.number,
+                                style: const TextStyle(
+                                  fontSize: 16, 
+                                  color: Color(0xFF2D3142), 
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                decoration: const InputDecoration(
+                                  hintText: '소비 금액',
+                                  hintStyle: TextStyle(
+                                    fontSize: 16, 
+                                    color: Color(0xFF9098B1), 
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  isDense: true,
+                                  contentPadding: EdgeInsets.only(bottom: 6),
+                                  enabledBorder: UnderlineInputBorder(
+                                    borderSide: BorderSide(color: Color(0xFFD1D9E6), width: 1),
+                                  ),
+                                  focusedBorder: UnderlineInputBorder(
+                                    borderSide: BorderSide(color: Color(0xFF2F60FF), width: 1),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            const Text(
+                              '원',
+                              style: TextStyle(
                                 fontSize: 16, 
-                                color: Color(0xFF9098B1), 
-                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF2D3142), 
+                                fontWeight: FontWeight.bold,
                               ),
-                              isDense: true,
-                              contentPadding: EdgeInsets.only(bottom: 6),
-                              enabledBorder: UnderlineInputBorder(
-                                borderSide: BorderSide(color: Color(0xFFD1D9E6), width: 1),
+                            ),
+                          ],
+                        ),
+
+                        // 🔥 공간을 밀어내지 않고 위로 떠오르는 오버레이 형태의 개월 수 피커
+                        if (showInstallmentPicker)
+                          Positioned(
+                            bottom: 48, // 입력창 위쪽으로 배치
+                            left: 88,   // 개월 버튼의 X축 위치에 딱 맞춤 (할부 여백 6 + 할부 버튼 70 + 간격 12)
+                            child: Container(
+                              height: 115, 
+                              width: 80,   
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFD1D9E6),
+                                borderRadius: BorderRadius.circular(12),
+                                boxShadow: [
+                                  // 오버레이가 살짝 떠있는 느낌을 주는 그림자 추가
+                                  BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(4, 4), blurRadius: 8),
+                                  const BoxShadow(color: Colors.white, offset: Offset(-4, -4), blurRadius: 8)
+                                ],
                               ),
-                              focusedBorder: UnderlineInputBorder(
-                                borderSide: BorderSide(color: Color(0xFF2F60FF), width: 1),
+                              child: ListView.builder(
+                                itemCount: 12,
+                                padding: const EdgeInsets.symmetric(vertical: 4),
+                                itemBuilder: (context, index) {
+                                  final month = index + 1;
+                                  final isMonthSelected = selectedInstallment == month;
+                                  return GestureDetector(
+                                    onTap: () {
+                                      setModalState(() {
+                                        selectedInstallment = month;
+                                        showInstallmentPicker = false; 
+                                      });
+                                    },
+                                    child: Container(
+                                      height: 32,
+                                      alignment: Alignment.center,
+                                      margin: const EdgeInsets.symmetric(vertical: 2, horizontal: 6),
+                                      decoration: BoxDecoration(
+                                        color: isMonthSelected ? const Color(0xFF2F60FF) : Colors.transparent,
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Text(
+                                        '$month개월',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                          color: isMonthSelected ? Colors.white : const Color(0xFF2D3142),
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
                               ),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        const Text(
-                          '원',
-                          style: TextStyle(
-                            fontSize: 16, 
-                            color: Color(0xFF2D3142), 
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
                       ],
                     ),
                     
@@ -286,7 +498,12 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                             setState(() {
                               cards[selectedCardIndex].expenses.insert(
                                 0, 
-                                Expense(amount: amount, date: DateTime.now())
+                                Expense(
+                                  amount: amount, 
+                                  date: DateTime.now(),
+                                  installmentMonths: selectedInstallment,
+                                  isInstallment: isInstallmentActive,
+                                )
                               );
                               cardBox.putAt(selectedCardIndex, cards[selectedCardIndex]);
                             });
@@ -338,7 +555,9 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
           },
         );
       },
-    );
+    ).then((_) {
+      _isExpenseModalOpen = false;
+    });
   }
 
   void _showCardDetailModal(BuildContext context, CardData card) {
@@ -429,6 +648,17 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                               itemBuilder: (_, index) {
                                 final expense = card.expenses[index];
 
+                                int displayedAmount = expense.amount;
+                                if (_isPerformanceMode) {
+                                  if (expense.isInstallment && expense.installmentMonths == null) {
+                                    displayedAmount = 0; 
+                                  }
+                                } else {
+                                  if (expense.isInstallment && expense.installmentMonths != null) {
+                                    displayedAmount = expense.amount ~/ expense.installmentMonths!;
+                                  }
+                                }
+
                                 return Padding(
                                   padding: const EdgeInsets.only(bottom: 20),
                                   child: Row(
@@ -445,14 +675,29 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                                       ),
                                       const SizedBox(width: 16),
                                       Expanded(
-                                        child: Text(
-                                          '${_formatCurrency(expense.amount)}원',
-                                          textAlign: TextAlign.center,
-                                          style: const TextStyle(
-                                            color: Color(0xFF2D3142),
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                          ),
+                                        child: Row(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            if (expense.isInstallment) ...[
+                                              Container(
+                                                width: 6,
+                                                height: 6,
+                                                decoration: const BoxDecoration(
+                                                  color: Color(0xFF2F60FF),
+                                                  shape: BoxShape.circle,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 6),
+                                            ],
+                                            Text(
+                                              '${_formatCurrency(displayedAmount)}원',
+                                              style: const TextStyle(
+                                                color: Color(0xFF2D3142),
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
                                       const SizedBox(width: 16),
@@ -460,7 +705,6 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                                         onTap: () {
                                           setState(() {
                                             card.expenses.removeAt(index); 
-                                            
                                             int cardIndex = cards.indexOf(card);
                                             cardBox.putAt(cardIndex, card);
                                           });
@@ -491,7 +735,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
     }
 
   void _showSummaryModal(BuildContext context) {
-      final totalSpent = cards.fold<int>(0, (sum, card) => sum + card.spent);
+      final totalSpent = cards.fold<int>(0, (sum, card) => sum + card.getSpent(_isPerformanceMode));
       final totalBudget = cards.fold<int>(0, (sum, card) => sum + card.total);
       final totalRemaining = totalBudget - totalSpent;
 
@@ -562,10 +806,10 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                 const SizedBox(height: 20),
                 Expanded(
                   child: ListView.builder(
-                    itemCount: cards.length, // 모든 카드 노출
+                    itemCount: cards.length, 
                     itemBuilder: (_, index) {
                       final card = cards[index];
-                      final remain = card.total - card.spent;
+                      final remain = card.total - card.getSpent(_isPerformanceMode);
 
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 20),
@@ -614,7 +858,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                                     ),
                                   ),
                                   Text(
-                                    '${_formatCurrency(card.spent)}원',
+                                    '${_formatCurrency(card.getSpent(_isPerformanceMode))}원',
                                     style: const TextStyle(
                                       color: Color(0xFF2D3142),
                                       fontSize: 16, 
@@ -663,29 +907,67 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
         title: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              '$currentMonth월 플랜',
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF2D3142),
-              ),
+            Row(
+              children: [
+                Text(
+                  '$currentMonth월 플랜',
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF2D3142),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                GestureDetector(
+                  onTap: () => _showSummaryModal(context),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), 
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE0E5EC),
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 4),
+                        BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 4),
+                      ],
+                    ),
+                    child: const Text(
+                      '요약',
+                      style: TextStyle(fontSize: 12, color: Color(0xFF2D3142), fontWeight: FontWeight.bold), 
+                    ),
+                  ),
+                ),
+              ],
             ),
+            
             GestureDetector(
-              onTap: () => _showSummaryModal(context),
-              child: Container(
+              onTap: () {
+                setState(() {
+                  _isPerformanceMode = !_isPerformanceMode;
+                });
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), 
                 decoration: BoxDecoration(
                   color: const Color(0xFFE0E5EC),
                   borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 4),
-                    BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 4),
-                  ],
+                  boxShadow: _isPerformanceMode
+                      ? [
+                          const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 4),
+                          BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 4),
+                        ]
+                      : [
+                          const BoxShadow(color: Colors.white, offset: Offset(2, 2), blurRadius: 4),
+                          BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(-2, -2), blurRadius: 4),
+                        ],
                 ),
-                child: const Text(
-                  '요약',
-                  style: TextStyle(fontSize: 12, color: Color(0xFF2D3142), fontWeight: FontWeight.bold), 
+                child: Text(
+                  _isPerformanceMode ? '실적 보기' : '청구액 보기',
+                  style: TextStyle(
+                    fontSize: 12, 
+                    color: _isPerformanceMode ? const Color(0xFF2F60FF) : const Color(0xFF9098B1), 
+                    fontWeight: FontWeight.bold
+                  ), 
                 ),
               ),
             ),
@@ -716,7 +998,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                 itemCount: mainScreenCards.length,
                 itemBuilder: (context, index) => GestureDetector(
                   onTap: () => _showCardDetailModal(context, mainScreenCards[index]), 
-                  child: BudgetCardWidget(data: mainScreenCards[index]),
+                  child: BudgetCardWidget(data: mainScreenCards[index], isPerformanceMode: _isPerformanceMode),
                 ),
               ),
               
@@ -941,13 +1223,13 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
 
 class BudgetCardWidget extends StatefulWidget {
   final CardData data;
-  const BudgetCardWidget({super.key, required this.data});
+  final bool isPerformanceMode;
+  const BudgetCardWidget({super.key, required this.data, required this.isPerformanceMode});
   @override
   State<BudgetCardWidget> createState() => _BudgetCardWidgetState();
 }
 
 class _BudgetCardWidgetState extends State<BudgetCardWidget> {
-
   String _formatCurrency(int amount) {
     return amount.toString().replaceAllMapped(
         RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},');
@@ -976,7 +1258,7 @@ class _BudgetCardWidgetState extends State<BudgetCardWidget> {
             Row(
               children: [
                 Container(
-                  width: 24, 
+                  width: 24,
                   height: 24,
                   decoration: BoxDecoration(
                     color: const Color(0xFFE0E5EC),
@@ -989,14 +1271,10 @@ class _BudgetCardWidgetState extends State<BudgetCardWidget> {
                   alignment: Alignment.center,
                   clipBehavior: Clip.antiAlias,
                   child: Transform.scale(
-                    scale: widget.data.name == '국민카드' 
-                        ? 1.8 
-                        : widget.data.name == '삼성카드' 
-                            ? 1.3 
-                            : 1.0,
+                    scale: widget.data.name == '국민카드' ? 1.8 : widget.data.name == '삼성카드' ? 1.3 : 1.0,
                     child: Image.asset(
                       widget.data.logoPath,
-                      width: 16, 
+                      width: 16,
                       height: 16,
                       fit: BoxFit.contain,
                       errorBuilder: (context, error, stackTrace) {
@@ -1005,16 +1283,14 @@ class _BudgetCardWidgetState extends State<BudgetCardWidget> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 6), 
+                const SizedBox(width: 6),
                 Text(
                   widget.data.name,
                   style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
                 ),
               ],
             ),
-
             const SizedBox(height: 15),
-            
             Expanded(child: Center(child: _buildDonutChart())),
           ],
         ),
@@ -1023,12 +1299,20 @@ class _BudgetCardWidgetState extends State<BudgetCardWidget> {
   }
 
   Widget _buildDonutChart() {
+    final spentAmount = widget.data.getSpent(widget.isPerformanceMode);
+    final spentPercent = widget.data.getSpentPercent(widget.isPerformanceMode);
+    final isOver = widget.data.isOverBudget(widget.isPerformanceMode);
+
+    final activeColor = widget.isPerformanceMode
+        ? const Color(0xFF2F60FF)
+        : const Color(0xFF00BFA5);
+
     return Center(
       child: Stack(
         alignment: Alignment.center,
         children: [
           Container(
-            width: 100, 
+            width: 100,
             height: 100,
             decoration: const BoxDecoration(
               shape: BoxShape.circle,
@@ -1042,31 +1326,41 @@ class _BudgetCardWidgetState extends State<BudgetCardWidget> {
           SizedBox(
             width: 100,
             height: 100,
-            child: CircularProgressIndicator(
-              value: widget.data.spentPercent,
-              strokeWidth: 7, 
-              valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF2F60FF)),
-              strokeCap: StrokeCap.round,
+            child: TweenAnimationBuilder<double>(
+              key: ValueKey(widget.isPerformanceMode),
+              tween: Tween<double>(begin: 0.0, end: spentPercent),
+              duration: const Duration(milliseconds: 1000),
+              curve: Curves.easeOutCubic,
+              builder: (context, value, _) => CircularProgressIndicator(
+                value: value,
+                strokeWidth: 7,
+                valueColor: AlwaysStoppedAnimation<Color>(activeColor),
+                strokeCap: StrokeCap.round,
+              ),
             ),
           ),
-          if (widget.data.isOverBudget)
+          if (isOver)
             SizedBox(
               width: 100,
               height: 100,
               child: CircularProgressIndicator(
-                value: ((widget.data.spent - widget.data.total) / widget.data.total).clamp(0.0, 1.0),
+                value: ((spentAmount - widget.data.total) / widget.data.total).clamp(0.0, 1.0),
                 strokeWidth: 7,
                 valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFF453A)),
                 strokeCap: StrokeCap.round,
               ),
             ),
           SizedBox(
-            width: 90, 
+            width: 90,
             child: FittedBox(
               fit: BoxFit.scaleDown,
-              child: Text(
-                _formatCurrency(widget.data.spent),
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 500),
+                child: Text(
+                  _formatCurrency(spentAmount),
+                  key: ValueKey(spentAmount),
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
+                ),
               ),
             ),
           ),
