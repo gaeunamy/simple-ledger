@@ -106,7 +106,9 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
         CardData(name: '롯데카드', logoPath: 'assets/images/lotte.png', total: 300000, expenses: []),
         CardData(name: '국민카드', logoPath: 'assets/images/kb.png', total: 300000, expenses: []),
         CardData(name: '하나카드', logoPath: 'assets/images/hana.png', total: 300000, expenses: []),
-        CardData(name: '신한카드', logoPath: 'assets/images/shinhan.png', total: 150000, expenses: []),
+        CardData(name: '신한카드', logoPath: 'assets/images/shinhan.png', total: 1000000, expenses: []),
+        CardData(name: '삼성카드', logoPath: 'assets/images/samsung.png', total: 500000, expenses: []),
+        CardData(name: '우리카드', logoPath: 'assets/images/woori.png', total: 300000, expenses: []),
       ]);
     }
 
@@ -122,6 +124,8 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
 
   void _showAddExpenseModal(BuildContext context, {int initialCardIndex = 0}) {
     int selectedCardIndex = initialCardIndex;
+    // 처음 열릴 때 선택된 카드가 4번(삼성)이나 5번(우리)이면 자동으로 펼쳐지게 설정
+    bool isExpanded = initialCardIndex >= 4; 
     final TextEditingController amountController = TextEditingController();
 
     showModalBottomSheet(
@@ -174,35 +178,57 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Row(
-                        children: List.generate(cards.length, (index) {
-                          final isSelected = selectedCardIndex == index;
-                          return Expanded(
-                            child: GestureDetector(
-                              onTap: () => setModalState(() => selectedCardIndex = index),
-                              child: Container(
-                                decoration: isSelected
-                                    ? BoxDecoration(
-                                        color: const Color(0xFFE0E5EC),
-                                        borderRadius: BorderRadius.circular(8),
-                                        boxShadow: [
-                                          const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 3),
-                                          BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.4), offset: const Offset(2, 2), blurRadius: 3),
-                                        ],
-                                      )
-                                    : const BoxDecoration(color: Colors.transparent),
-                                alignment: Alignment.center,
-                                child: Text(
-                                  cards[index].name.substring(0, 2), 
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                                    color: isSelected ? const Color(0xFF2F60FF) : const Color(0xFF9098B1),
+                        children: [
+                          // isExpanded가 true면 모든 카드, false면 앞의 4개만 보여줌
+                          ...List.generate(isExpanded ? cards.length : 4, (index) {
+                            final isSelected = selectedCardIndex == index;
+                            return Expanded(
+                              child: GestureDetector(
+                                onTap: () => setModalState(() => selectedCardIndex = index),
+                                child: Container(
+                                  decoration: isSelected
+                                      ? BoxDecoration(
+                                          color: const Color(0xFFE0E5EC),
+                                          borderRadius: BorderRadius.circular(8),
+                                          boxShadow: [
+                                            const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 3),
+                                            BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.4), offset: const Offset(2, 2), blurRadius: 3),
+                                          ],
+                                        )
+                                      : const BoxDecoration(color: Colors.transparent),
+                                  alignment: Alignment.center,
+                                  child: Text(
+                                    cards[index].name.substring(0, 2), 
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                                      color: isSelected ? const Color(0xFF2F60FF) : const Color(0xFF9098B1),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          }),
+                          // 아직 펼쳐지지 않았을 때 '+' 버튼 노출
+                          if (!isExpanded)
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () => setModalState(() => isExpanded = true),
+                                child: Container(
+                                  decoration: const BoxDecoration(color: Colors.transparent),
+                                  alignment: Alignment.center,
+                                  child: const Text(
+                                    '+', 
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF9098B1),
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                          );
-                        }),
+                        ],
                       ),
                     ),
                     
@@ -536,7 +562,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                 const SizedBox(height: 20),
                 Expanded(
                   child: ListView.builder(
-                    itemCount: cards.length,
+                    itemCount: cards.length, // 모든 카드 노출
                     itemBuilder: (_, index) {
                       final card = cards[index];
                       final remain = card.total - card.spent;
@@ -630,6 +656,8 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
     final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
     final progressPercent = now.day / daysInMonth;
 
+    final mainScreenCards = cards.where((card) => card.name != '우리카드' && card.name != '삼성카드').toList();
+
     return Scaffold(
       appBar: AppBar(
         title: Row(
@@ -685,10 +713,10 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
                   mainAxisSpacing: 22, 
                   childAspectRatio: 0.85, 
                 ),
-                itemCount: cards.length,
+                itemCount: mainScreenCards.length,
                 itemBuilder: (context, index) => GestureDetector(
-                  onTap: () => _showCardDetailModal(context, cards[index]), 
-                  child: BudgetCardWidget(data: cards[index]),
+                  onTap: () => _showCardDetailModal(context, mainScreenCards[index]), 
+                  child: BudgetCardWidget(data: mainScreenCards[index]),
                 ),
               ),
               
@@ -980,7 +1008,7 @@ class _BudgetCardWidgetState extends State<BudgetCardWidget> {
                 const SizedBox(width: 6), 
                 Text(
                   widget.data.name,
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)), // 12 -> 14로 크기 증가!
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
                 ),
               ],
             ),
@@ -1038,7 +1066,7 @@ class _BudgetCardWidgetState extends State<BudgetCardWidget> {
               fit: BoxFit.scaleDown,
               child: Text(
                 _formatCurrency(widget.data.spent),
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)), // 14 -> 16으로 크기 증가!
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
               ),
             ),
           ),
