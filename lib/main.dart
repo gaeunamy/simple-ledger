@@ -744,73 +744,74 @@ class _MultiCardScreenState extends State<MultiCardScreen> {
   }
 
   Widget _summaryCard(
-    String title,
-    String value,
-    Color valueColor, {
-    String? subText,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFFE0E5EC),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          const BoxShadow(
-            color: Colors.white,
-            offset: Offset(-6, -6),
-            blurRadius: 12,
-          ),
-          BoxShadow(
-            color: const Color(0xFFA3B1C6).withOpacity(0.5),
-            offset: const Offset(6, 6),
-            blurRadius: 12,
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 14,
-              color: Color(0xFF9098B1),
-              fontWeight: FontWeight.w600,
+      String title,
+      String value,
+      Color valueColor, {
+      String? subText,
+    }) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFE0E5EC),
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            const BoxShadow(
+              color: Colors.white,
+              offset: Offset(-6, -6),
+              blurRadius: 12,
             ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                value,
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: valueColor,
-                ),
+            BoxShadow(
+              color: const Color(0xFFA3B1C6).withOpacity(0.5),
+              offset: const Offset(6, 6),
+              blurRadius: 12,
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 14,
+                color: Color(0xFF9098B1),
+                fontWeight: FontWeight.w600,
               ),
-
-              if (subText != null) ...[
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    subText,
-                    textAlign: TextAlign.right,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: Color(0xFF9098B1),
-                      fontWeight: FontWeight.w600,
+            ),
+            const SizedBox(height: 12),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    value,
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: valueColor,
                     ),
                   ),
-                ),
-              ],
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+                  if (subText != null) ...[
+                    const SizedBox(width: 8),
+                    Text(
+                      subText,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Color(0xFF9098B1),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
   Widget _buildProgressSection(double progress, int currentDay, int currentMonth) {
     return Column(
@@ -1032,7 +1033,7 @@ class _BudgetCardWidgetState extends State<BudgetCardWidget> {
               ),
             ),
           SizedBox(
-            width: 70, 
+            width: 90, 
             child: FittedBox(
               fit: BoxFit.scaleDown,
               child: Text(
