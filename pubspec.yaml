@@ -13,6 +13,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   hive: ^2.2.3
   hive_flutter: ^1.1.0
+  flutter_native_splash: ^2.4.8
 
 dev_dependencies:
   flutter_test:
@@ -29,7 +30,15 @@ flutter:
     - assets/images/
 
 flutter_launcher_icons:
-  android: "launcher_icon"
+  android: true
   ios: true
   image_path: "assets/images/icon.png"
   min_sdk_android: 21
+
+flutter_native_splash:
+  color: "#E0E5EC"
+  image: "assets/images/splash_icon.png.png"
+  
+  android_12:
+    color: "#E0E5EC"
+    image: "assets/images/splash_icon.png.png"
