@@ -12,6 +12,7 @@ void main() async {
   Hive.registerAdapter(CardDataAdapter());
 
   await Hive.openBox<CardData>('myCardsBox');
+  await Hive.openBox('settingsBox');
 
   runApp(const MyApp());
 }
@@ -91,32 +92,33 @@ class CardData {
     List<Expense>? expenses,
   }) : expenses = expenses ?? [];
 
-  int getSpent(bool isPerformanceMode) {
-    final now = DateTime.now();
+  // 특정 기준 월(targetDate)을 입력받아 해당 월의 금액을 계산하도록 업그레이드 (없으면 현재 달력 기준)
+  int getSpent(bool isPerformanceMode, {DateTime? targetDate}) {
+    final target = targetDate ?? DateTime.now();
 
     return expenses.fold(0, (sum, item) {
       if (isPerformanceMode) {
         if (item.isInstallment && item.installmentMonths == null) {
           return sum; 
         }
-        if (item.date.year == now.year && item.date.month == now.month) {
+        if (item.date.year == target.year && item.date.month == target.month) {
           return sum + item.amount; 
         }
         return sum;
       } else {
         if (item.isInstallment) {
           if (item.installmentMonths == null) {
-            if (item.date.year == now.year && item.date.month == now.month) {
+            if (item.date.year == target.year && item.date.month == target.month) {
               return sum + item.amount;
             }
           } else {
-            int monthsPassed = (now.year - item.date.year) * 12 + (now.month - item.date.month);
+            int monthsPassed = (target.year - item.date.year) * 12 + (target.month - item.date.month);
             if (monthsPassed >= 0 && monthsPassed < item.installmentMonths!) {
               return sum + (item.amount ~/ item.installmentMonths!);
             }
           }
         } else {
-          if (item.date.year == now.year && item.date.month == now.month) {
+          if (item.date.year == target.year && item.date.month == target.month) {
             return sum + item.amount;
           }
         }
@@ -125,8 +127,11 @@ class CardData {
     });
   }
 
-  bool isOverBudget(bool isPerformanceMode) => getSpent(isPerformanceMode) > total;
-  double getSpentPercent(bool isPerformanceMode) => total > 0 ? (getSpent(isPerformanceMode) / total).clamp(0.0, 1.0) : 0.0;
+  bool isOverBudget(bool isPerformanceMode, {DateTime? targetDate}) => 
+      getSpent(isPerformanceMode, targetDate: targetDate) > total;
+      
+  double getSpentPercent(bool isPerformanceMode, {DateTime? targetDate}) => 
+      total > 0 ? (getSpent(isPerformanceMode, targetDate: targetDate) / total).clamp(0.0, 1.0) : 0.0;
 }
 
 class MultiCardScreen extends StatefulWidget {
@@ -138,6 +143,7 @@ class MultiCardScreen extends StatefulWidget {
 
 class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingObserver {
   late Box<CardData> cardBox;
+  late Box settingsBox;
   late List<CardData> cards;
 
   final FocusNode _amountFocusNode = FocusNode();
@@ -150,6 +156,9 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     cardBox = Hive.box<CardData>('myCardsBox');
+    settingsBox = Hive.box('settingsBox');
+
+    _isPerformanceMode = settingsBox.get('isPerformanceMode', defaultValue: false);
 
     if (cardBox.isEmpty) {
       cardBox.addAll([
@@ -218,97 +227,96 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                   color: Color(0xFFE0E5EC),
                   borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Stack(
+                  clipBehavior: Clip.none,
                   children: [
-                    Center(
-                      child: Container(
-                        width: 48,
-                        height: 5,
-                        margin: const EdgeInsets.only(bottom: 24), 
-                        decoration: BoxDecoration(
-                          color: Colors.grey.withOpacity(0.5), 
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                      ),
-                    ),
-                    const Text(
-                      '지출 내역 추가',
-                      style: TextStyle(
-                        fontSize: 18, 
-                        fontWeight: FontWeight.bold, 
-                        color: Color(0xFF2D3142)
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    
-                    Container(
-                      height: 50,
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFD1D9E6), 
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        children: [
-                          ...List.generate(isExpanded ? cards.length : 4, (index) {
-                            final isSelected = selectedCardIndex == index;
-                            return Expanded(
-                              child: GestureDetector(
-                                onTap: () => setModalState(() => selectedCardIndex = index),
-                                child: Container(
-                                  decoration: isSelected
-                                      ? BoxDecoration(
-                                          color: const Color(0xFFE0E5EC),
-                                          borderRadius: BorderRadius.circular(8),
-                                          boxShadow: [
-                                            const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 3),
-                                            BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.4), offset: const Offset(2, 2), blurRadius: 3),
-                                          ],
-                                        )
-                                      : const BoxDecoration(color: Colors.transparent),
-                                  alignment: Alignment.center,
-                                  child: Text(
-                                    cards[index].name.substring(0, 2), 
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                                      color: isSelected ? const Color(0xFF2F60FF) : const Color(0xFF9098B1),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            );
-                          }),
-                          if (!isExpanded)
-                            Expanded(
-                              child: GestureDetector(
-                                onTap: () => setModalState(() => isExpanded = true),
-                                child: Container(
-                                  decoration: const BoxDecoration(color: Colors.transparent),
-                                  alignment: Alignment.center,
-                                  child: const Text(
-                                    '+', 
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFF9098B1),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                    
-                    const SizedBox(height: 32),
-                    
-                    // 🔥 피커에 의한 레이아웃 밀림 방지를 위해 Stack으로 감쌈
-                    Stack(
-                      clipBehavior: Clip.none, // 피커가 공중으로 온전히 튀어나올 수 있도록 설정
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        Center(
+                          child: Container(
+                            width: 48,
+                            height: 5,
+                            margin: const EdgeInsets.only(bottom: 24), 
+                            decoration: BoxDecoration(
+                              color: Colors.grey.withOpacity(0.5), 
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                          ),
+                        ),
+                        const Text(
+                          '지출 내역 추가',
+                          style: TextStyle(
+                            fontSize: 18, 
+                            fontWeight: FontWeight.bold, 
+                            color: Color(0xFF2D3142)
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        
+                        Container(
+                          height: 50,
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFD1D9E6), 
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            children: [
+                              ...List.generate(isExpanded ? cards.length : 4, (index) {
+                                final isSelected = selectedCardIndex == index;
+                                return Expanded(
+                                  child: GestureDetector(
+                                    onTap: () => setModalState(() => selectedCardIndex = index),
+                                    child: Container(
+                                      decoration: isSelected
+                                          ? BoxDecoration(
+                                              color: const Color(0xFFE0E5EC),
+                                              borderRadius: BorderRadius.circular(8),
+                                              boxShadow: [
+                                                const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 3),
+                                                BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.4), offset: const Offset(2, 2), blurRadius: 3),
+                                              ],
+                                            )
+                                          : const BoxDecoration(color: Colors.transparent),
+                                      alignment: Alignment.center,
+                                      child: Text(
+                                        cards[index].name.substring(0, 2), 
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                                          color: isSelected ? const Color(0xFF2F60FF) : const Color(0xFF9098B1),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }),
+                              if (!isExpanded)
+                                Expanded(
+                                  child: GestureDetector(
+                                    onTap: () => setModalState(() => isExpanded = true),
+                                    child: Container(
+                                      decoration: const BoxDecoration(color: Colors.transparent),
+                                      alignment: Alignment.center,
+                                      child: const Text(
+                                        '+', 
+                                        style: TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF9098B1),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        
+                        const SizedBox(height: 32),
+                        
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
@@ -325,9 +333,9 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                                 });
                               },
                               child: Container(
-                                width: 70,
-                                height: 40,
-                                margin: const EdgeInsets.only(left: 6),
+                                width: 60, 
+                                height: 38,
+                                margin: const EdgeInsets.only(left: 8), 
                                 alignment: Alignment.center,
                                 decoration: isInstallmentActive
                                     ? BoxDecoration(
@@ -342,13 +350,18 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                                         color: const Color(0xFFD1D9E6),
                                         borderRadius: BorderRadius.circular(12),
                                       ),
-                                child: Text(
-                                  '할부',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
-                                    // 🔥 할부가 활성화(ON) 되면 글자색을 파란색으로 변경
-                                    color: isInstallmentActive ? const Color(0xFF2F60FF) : const Color(0xFF9098B1),
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                                    child: Text(
+                                      '할부',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold,
+                                        color: isInstallmentActive ? const Color(0xFF2F60FF) : const Color(0xFF9098B1),
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
@@ -364,7 +377,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                                 },
                                 child: Container(
                                   width: 80,
-                                  height: 40,
+                                  height: 38,
                                   alignment: Alignment.center,
                                   decoration: selectedInstallment != null
                                       ? BoxDecoration(
@@ -432,122 +445,120 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                             ),
                           ],
                         ),
-
-                        // 🔥 공간을 밀어내지 않고 위로 떠오르는 오버레이 형태의 개월 수 피커
-                        if (showInstallmentPicker)
-                          Positioned(
-                            bottom: 48, // 입력창 위쪽으로 배치
-                            left: 88,   // 개월 버튼의 X축 위치에 딱 맞춤 (할부 여백 6 + 할부 버튼 70 + 간격 12)
-                            child: Container(
-                              height: 115, 
-                              width: 80,   
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFD1D9E6),
-                                borderRadius: BorderRadius.circular(12),
-                                boxShadow: [
-                                  // 오버레이가 살짝 떠있는 느낌을 주는 그림자 추가
-                                  BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(4, 4), blurRadius: 8),
-                                  const BoxShadow(color: Colors.white, offset: Offset(-4, -4), blurRadius: 8)
-                                ],
-                              ),
-                              child: ListView.builder(
-                                itemCount: 12,
-                                padding: const EdgeInsets.symmetric(vertical: 4),
-                                itemBuilder: (context, index) {
-                                  final month = index + 1;
-                                  final isMonthSelected = selectedInstallment == month;
-                                  return GestureDetector(
-                                    onTap: () {
-                                      setModalState(() {
-                                        selectedInstallment = month;
-                                        showInstallmentPicker = false; 
-                                      });
-                                    },
-                                    child: Container(
-                                      height: 32,
-                                      alignment: Alignment.center,
-                                      margin: const EdgeInsets.symmetric(vertical: 2, horizontal: 6),
-                                      decoration: BoxDecoration(
-                                        color: isMonthSelected ? const Color(0xFF2F60FF) : Colors.transparent,
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Text(
-                                        '$month개월',
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.bold,
-                                          color: isMonthSelected ? Colors.white : const Color(0xFF2D3142),
-                                        ),
-                                      ),
-                                    ),
+                        
+                        const SizedBox(height: 40),
+                        
+                        GestureDetector(
+                          onTap: () {
+                            if (amountController.text.isNotEmpty) {
+                              int amount = int.tryParse(amountController.text.replaceAll(',', '')) ?? 0;
+                              if (amount > 0) {
+                                setState(() {
+                                  cards[selectedCardIndex].expenses.insert(
+                                    0, 
+                                    Expense(
+                                      amount: amount, 
+                                      date: DateTime.now(),
+                                      installmentMonths: selectedInstallment,
+                                      isInstallment: isInstallmentActive,
+                                    )
                                   );
-                                },
+                                  cardBox.putAt(selectedCardIndex, cards[selectedCardIndex]);
+                                });
+                                Navigator.pop(context); 
+                              }
+                            }
+                          },
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(16),
+                              gradient: const LinearGradient(
+                                colors: [
+                                  Color(0xFF4A7DFF), 
+                                  Color(0xFF1A4BFF), 
+                                ],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFF2F60FF).withOpacity(0.4),
+                                  offset: const Offset(4, 6),
+                                  blurRadius: 12,
+                                ),
+                                const BoxShadow(
+                                  color: Colors.white,
+                                  offset: Offset(-4, -4),
+                                  blurRadius: 8,
+                                ),
+                              ],
+                            ),
+                            alignment: Alignment.center,
+                            child: const Text(
+                              '확인',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
                               ),
                             ),
                           ),
+                        ),
                       ],
                     ),
-                    
-                    const SizedBox(height: 40),
-                    
-                    GestureDetector(
-                      onTap: () {
-                        if (amountController.text.isNotEmpty) {
-                          int amount = int.tryParse(amountController.text.replaceAll(',', '')) ?? 0;
-                          if (amount > 0) {
-                            setState(() {
-                              cards[selectedCardIndex].expenses.insert(
-                                0, 
-                                Expense(
-                                  amount: amount, 
-                                  date: DateTime.now(),
-                                  installmentMonths: selectedInstallment,
-                                  isInstallment: isInstallmentActive,
-                                )
-                              );
-                              cardBox.putAt(selectedCardIndex, cards[selectedCardIndex]);
-                            });
-                            Navigator.pop(context); 
-                          }
-                        }
-                      },
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(16),
-                          gradient: const LinearGradient(
-                            colors: [
-                              Color(0xFF4A7DFF), 
-                              Color(0xFF1A4BFF), 
+
+                    if (showInstallmentPicker)
+                      Positioned(
+                        bottom: 130, 
+                        left: 80,   
+                        child: Container(
+                          height: 115, 
+                          width: 80,   
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFD1D9E6),
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(4, 4), blurRadius: 8),
+                              const BoxShadow(color: Colors.white, offset: Offset(-4, -4), blurRadius: 8)
                             ],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
                           ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFF2F60FF).withOpacity(0.4),
-                              offset: const Offset(4, 6),
-                              blurRadius: 12,
-                            ),
-                            const BoxShadow(
-                              color: Colors.white,
-                              offset: Offset(-4, -4),
-                              blurRadius: 8,
-                            ),
-                          ],
-                        ),
-                        alignment: Alignment.center,
-                        child: const Text(
-                          '확인',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
+                          child: ListView.builder(
+                            itemCount: 12,
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            itemBuilder: (context, index) {
+                              final month = index + 1;
+                              final isMonthSelected = selectedInstallment == month;
+                              return GestureDetector(
+                                onTap: () {
+                                  setModalState(() {
+                                    selectedInstallment = month;
+                                    showInstallmentPicker = false; 
+                                  });
+                                },
+                                child: Container(
+                                  height: 32,
+                                  alignment: Alignment.center,
+                                  margin: const EdgeInsets.symmetric(vertical: 2, horizontal: 6),
+                                  decoration: BoxDecoration(
+                                    color: isMonthSelected ? const Color(0xFF2F60FF) : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    '$month개월',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                      color: isMonthSelected ? Colors.white : const Color(0xFF2D3142),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
                           ),
                         ),
                       ),
-                    ),
                   ],
                 ),
               ),
@@ -561,337 +572,452 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
   }
 
   void _showCardDetailModal(BuildContext context, CardData card) {
-      showModalBottomSheet(
-        context: context,
-        backgroundColor: Colors.transparent,
-        isScrollControlled: true,
-        builder: (context) {
-          return StatefulBuilder(
-            builder: (context, setModalState) {
-              return Container(
-                height: MediaQuery.of(context).size.height * 0.7, 
-                padding: const EdgeInsets.all(24),
-                decoration: const BoxDecoration(
-                  color: Color(0xFFE0E5EC),
-                  borderRadius: BorderRadius.vertical(
-                    top: Radius.circular(32),
-                  ),
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.7, 
+              padding: const EdgeInsets.all(24),
+              decoration: const BoxDecoration(
+                color: Color(0xFFE0E5EC),
+                borderRadius: BorderRadius.vertical(
+                  top: Radius.circular(32),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 48,
-                        height: 5,
-                        decoration: BoxDecoration(
-                          color: Colors.grey,
-                          borderRadius: BorderRadius.circular(999),
-                        ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 48,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: Colors.grey,
+                        borderRadius: BorderRadius.circular(999),
                       ),
                     ),
-                    const SizedBox(height: 24),
-                    
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          card.name,
-                          style: const TextStyle(
-                            color: Color(0xFF2D3142),
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
+                  ),
+                  const SizedBox(height: 24),
+                  
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        card.name,
+                        style: const TextStyle(
+                          color: Color(0xFF2D3142),
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: () {
+                          Navigator.pop(context); 
+                          _showAddExpenseModal(context, initialCardIndex: cards.indexOf(card)); 
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE0E5EC),
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 4),
+                              BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 4),
+                            ],
+                          ),
+                          child: const Text(
+                            '+',
+                            style: TextStyle(
+                              fontSize: 16, 
+                              color: Color(0xFF2D3142), 
+                              fontWeight: FontWeight.bold
+                            ),
                           ),
                         ),
-                        GestureDetector(
-                          onTap: () {
-                            Navigator.pop(context); 
-                            _showAddExpenseModal(context, initialCardIndex: cards.indexOf(card)); 
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFE0E5EC),
-                              borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
-                                const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 4),
-                                BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 4),
-                              ],
-                            ),
-                            child: const Text(
-                              '+',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+
+                  Expanded(
+                    child: card.expenses.isEmpty
+                        ? const Center(
+                            child: Text(
+                              '아직 등록된 지출 내역이 없습니다.',
                               style: TextStyle(
-                                fontSize: 16, 
-                                color: Color(0xFF2D3142), 
-                                fontWeight: FontWeight.bold
+                                color: Color(0xFF9098B1),
+                                fontSize: 16,
                               ),
                             ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
+                          )
+                        : ListView.builder(
+                            itemCount: card.expenses.length,
+                            itemBuilder: (_, index) {
+                              final expense = card.expenses[index];
+                              final now = DateTime.now();
+                              bool shouldShow = false;
 
-                    Expanded(
-                      child: card.expenses.isEmpty
-                          ? const Center(
-                              child: Text(
-                                '아직 등록된 지출 내역이 없습니다.',
-                                style: TextStyle(
-                                  color: Color(0xFF9098B1),
-                                  fontSize: 16,
-                                ),
-                              ),
-                            )
-                          : ListView.builder(
-                              itemCount: card.expenses.length,
-                              itemBuilder: (_, index) {
-                                final expense = card.expenses[index];
-
-                                int displayedAmount = expense.amount;
-                                if (_isPerformanceMode) {
-                                  if (expense.isInstallment && expense.installmentMonths == null) {
-                                    displayedAmount = 0; 
-                                  }
-                                } else {
-                                  if (expense.isInstallment && expense.installmentMonths != null) {
-                                    displayedAmount = expense.amount ~/ expense.installmentMonths!;
+                              // 💡 [필터링 로직] 리스트에는 이번 달 관련 내역만 띄움
+                              if (_isPerformanceMode) {
+                                // 실적 보기: 이번 달에 결제한 건만 보임 (개월 수 없는 할부는 제외)
+                                if (expense.date.year == now.year && expense.date.month == now.month) {
+                                  if (!(expense.isInstallment && expense.installmentMonths == null)) {
+                                    shouldShow = true;
                                   }
                                 }
+                              } else {
+                                // 청구액 보기: 이번 달 결제 건이거나, 과거에 결제했어도 이번 달에 할부금이 청구되는 경우 보임
+                                if (expense.isInstallment && expense.installmentMonths != null) {
+                                  int monthsPassed = (now.year - expense.date.year) * 12 + (now.month - expense.date.month);
+                                  if (monthsPassed >= 0 && monthsPassed < expense.installmentMonths!) {
+                                    shouldShow = true;
+                                  }
+                                } else {
+                                  if (expense.date.year == now.year && expense.date.month == now.month) {
+                                    shouldShow = true;
+                                  }
+                                }
+                              }
 
-                                return Padding(
-                                  padding: const EdgeInsets.only(bottom: 20),
-                                  child: Row(
-                                    children: [
-                                      SizedBox(
-                                        width: 60,
-                                        child: Text(
-                                          expense.formattedDate,
-                                          style: const TextStyle(
-                                            color: Color(0xFF9098B1),
-                                            fontSize: 14,
-                                          ),
+                              // 이번 달 내역이 아니면 숨기기
+                              if (!shouldShow) return const SizedBox.shrink();
+
+                              // 표시 금액 계산
+                              int displayedAmount = expense.amount;
+                              if (!_isPerformanceMode) {
+                                if (expense.isInstallment && expense.installmentMonths != null) {
+                                  displayedAmount = expense.amount ~/ expense.installmentMonths!;
+                                }
+                              }
+
+                              // 동그라미 색상 정의 (개월 수 없으면 아침 초록색, 있으면 파란색)
+                              Color circleColor = const Color(0xFF2F60FF);
+                              if (expense.isInstallment && expense.installmentMonths == null) {
+                                circleColor = const Color(0xFF00BFA5); 
+                              }
+
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 20),
+                                child: Row(
+                                  children: [
+                                    SizedBox(
+                                      width: 60,
+                                      child: Text(
+                                        expense.formattedDate,
+                                        style: const TextStyle(
+                                          color: Color(0xFF9098B1),
+                                          fontSize: 14,
                                         ),
                                       ),
-                                      const SizedBox(width: 16),
-                                      Expanded(
-                                        child: Row(
-                                          mainAxisAlignment: MainAxisAlignment.center,
-                                          children: [
-                                            if (expense.isInstallment) ...[
-                                              Container(
-                                                width: 6,
-                                                height: 6,
-                                                decoration: const BoxDecoration(
-                                                  color: Color(0xFF2F60FF),
-                                                  shape: BoxShape.circle,
-                                                ),
+                                    ),
+                                    const SizedBox(width: 16),
+                                    Expanded(
+                                      child: Row(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        crossAxisAlignment: CrossAxisAlignment.center,
+                                        children: [
+                                          if (expense.isInstallment) ...[
+                                            Container(
+                                              width: 6,
+                                              height: 6,
+                                              decoration: BoxDecoration(
+                                                color: circleColor,
+                                                shape: BoxShape.circle,
                                               ),
-                                              const SizedBox(width: 6),
-                                            ],
+                                            ),
+                                            const SizedBox(width: 6),
+                                          ],
+                                          Text(
+                                            '${_formatCurrency(displayedAmount)}원',
+                                            style: const TextStyle(
+                                              color: Color(0xFF2D3142),
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                          if (_isPerformanceMode && expense.isInstallment && expense.installmentMonths != null) ...[
+                                            const SizedBox(width: 4),
                                             Text(
-                                              '${_formatCurrency(displayedAmount)}원',
+                                              '/${expense.installmentMonths}개월',
                                               style: const TextStyle(
-                                                color: Color(0xFF2D3142),
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.bold,
+                                                color: Color(0xFF9098B1),
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.normal,
                                               ),
                                             ),
                                           ],
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 16),
+                                    GestureDetector(
+                                      onTap: () {
+                                        setState(() {
+                                          card.expenses.removeAt(index); 
+                                          int cardIndex = cards.indexOf(card);
+                                          cardBox.putAt(cardIndex, card);
+                                        });
+                                        setModalState(() {}); 
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.all(8),
+                                        child: const Icon(
+                                          Icons.close,
+                                          color: Colors.redAccent,
+                                          size: 20,
                                         ),
                                       ),
-                                      const SizedBox(width: 16),
-                                      GestureDetector(
-                                        onTap: () {
-                                          setState(() {
-                                            card.expenses.removeAt(index); 
-                                            int cardIndex = cards.indexOf(card);
-                                            cardBox.putAt(cardIndex, card);
-                                          });
-                                          setModalState(() {}); 
-                                        },
-                                        child: Container(
-                                          padding: const EdgeInsets.all(8),
-                                          child: const Icon(
-                                            Icons.close,
-                                            color: Colors.redAccent,
-                                            size: 20,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
-                            ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          );
-        },
-      );
-    }
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
 
   void _showSummaryModal(BuildContext context) {
-      final totalSpent = cards.fold<int>(0, (sum, card) => sum + card.getSpent(_isPerformanceMode));
-      final totalBudget = cards.fold<int>(0, (sum, card) => sum + card.total);
-      final totalRemaining = totalBudget - totalSpent;
+    // 💡 요약 창 전용 달력 탐색기 기준일 (기본값: 오늘 달력)
+    DateTime selectedSummaryDate = DateTime.now();
 
-      showModalBottomSheet(
-        context: context,
-        backgroundColor: Colors.transparent,
-        isScrollControlled: true,
-        builder: (_) {
-          return Container(
-            height: MediaQuery.of(context).size.height * 0.8,
-            padding: const EdgeInsets.all(24),
-            decoration: const BoxDecoration(
-              color: Color(0xFFE0E5EC),
-              borderRadius: BorderRadius.vertical(
-                top: Radius.circular(32),
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            // 선택된 월(selectedSummaryDate)을 기준으로 금액 계산
+            final totalSpent = cards.fold<int>(0, (sum, card) => sum + card.getSpent(_isPerformanceMode, targetDate: selectedSummaryDate));
+            final totalBudget = cards.fold<int>(0, (sum, card) => sum + card.total);
+            final totalRemaining = totalBudget - totalSpent;
+
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.8,
+              padding: const EdgeInsets.all(24),
+              decoration: const BoxDecoration(
+                color: Color(0xFFE0E5EC),
+                borderRadius: BorderRadius.vertical(
+                  top: Radius.circular(32),
+                ),
               ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 48,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: Colors.grey,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                const Text(
-                  '요약',
-                  style: TextStyle(
-                    color: Color(0xFF2D3142),
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _summaryCard(
-                        '총 소비',
-                        '${_formatCurrency(totalSpent)}원',
-                        const Color(0xFF2D3142),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 48,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: Colors.grey,
+                        borderRadius: BorderRadius.circular(999),
                       ),
                     ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: _summaryCard(
-                      '남은 예산',
-                      '${_formatCurrency(totalRemaining)}원',
-                      const Color(0xFF2D3142),
-                    ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 40),
-                const Text(
-                  '카드별 소비',
-                  style: TextStyle(
-                    color: Color(0xFF9098B1),
-                    fontSize: 16,
                   ),
-                ),
-                const SizedBox(height: 20),
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: cards.length, 
-                    itemBuilder: (_, index) {
-                      final card = cards[index];
-                      final remain = card.total - card.getSpent(_isPerformanceMode);
-
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 20),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 24, 
-                              height: 24,
+                  const SizedBox(height: 24),
+                  
+                  // 💡 상단 헤더 영역에 달력 좌우 스와이프 버튼 추가
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        '요약',
+                        style: TextStyle(
+                          color: Color(0xFF2D3142),
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          GestureDetector(
+                            onTap: () {
+                              setModalState(() {
+                                selectedSummaryDate = DateTime(selectedSummaryDate.year, selectedSummaryDate.month - 1);
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
                               decoration: BoxDecoration(
                                 color: const Color(0xFFE0E5EC),
-                                shape: BoxShape.circle,
+                                borderRadius: BorderRadius.circular(8),
                                 boxShadow: [
-                                  const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 3),
-                                  BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 3),
+                                  const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 2),
+                                  BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 2),
                                 ],
                               ),
-                              alignment: Alignment.center,
-                              clipBehavior: Clip.antiAlias,
-                              child: Transform.scale(
-                                scale: card.name == '국민카드' 
-                                    ? 1.8 
-                                    : card.name == '삼성카드' 
-                                        ? 1.3 
-                                        : 1.0, 
-                                child: Image.asset(
-                                  card.logoPath,
-                                  width: 16, 
-                                  height: 16,
-                                  fit: BoxFit.contain,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return const Icon(Icons.credit_card, size: 12, color: Color(0xFF2F60FF));
-                                  },
+                              child: const Icon(Icons.chevron_left, size: 20, color: Color(0xFF2D3142)),
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          SizedBox(
+                            width: 80,
+                            child: Text(
+                              '${selectedSummaryDate.year}년 ${selectedSummaryDate.month}월',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Color(0xFF2F60FF),
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          GestureDetector(
+                            onTap: () {
+                              setModalState(() {
+                                selectedSummaryDate = DateTime(selectedSummaryDate.year, selectedSummaryDate.month + 1);
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE0E5EC),
+                                borderRadius: BorderRadius.circular(8),
+                                boxShadow: [
+                                  const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 2),
+                                  BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 2),
+                                ],
+                              ),
+                              child: const Icon(Icons.chevron_right, size: 20, color: Color(0xFF2D3142)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _summaryCard(
+                          '총 소비',
+                          '${_formatCurrency(totalSpent)}원',
+                          const Color(0xFF2D3142),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _summaryCard(
+                        '남은 예산',
+                        '${_formatCurrency(totalRemaining)}원',
+                        const Color(0xFF2D3142),
+                      ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 40),
+                  const Text(
+                    '카드별 소비',
+                    style: TextStyle(
+                      color: Color(0xFF9098B1),
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: cards.length, 
+                      itemBuilder: (_, index) {
+                        final card = cards[index];
+                        // 카드별 상세 금액도 선택된 달(selectedSummaryDate)을 기준으로 계산
+                        final cardSpent = card.getSpent(_isPerformanceMode, targetDate: selectedSummaryDate);
+                        final remain = card.total - cardSpent;
+
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 20),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 24, 
+                                height: 24,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFE0E5EC),
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 3),
+                                    BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 3),
+                                  ],
+                                ),
+                                alignment: Alignment.center,
+                                clipBehavior: Clip.antiAlias,
+                                child: Transform.scale(
+                                  scale: card.name == '국민카드' 
+                                      ? 1.8 
+                                      : card.name == '삼성카드' 
+                                          ? 1.3 
+                                          : 1.0, 
+                                  child: Image.asset(
+                                    card.logoPath,
+                                    width: 16, 
+                                    height: 16,
+                                    fit: BoxFit.contain,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return const Icon(Icons.credit_card, size: 12, color: Color(0xFF2F60FF));
+                                    },
+                                  ),
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    card.name,
-                                    style: const TextStyle(
-                                      color: Color(0xFF9098B1),
-                                      fontSize: 12, 
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      card.name,
+                                      style: const TextStyle(
+                                        color: Color(0xFF9098B1),
+                                        fontSize: 12, 
+                                      ),
                                     ),
-                                  ),
-                                  Text(
-                                    '${_formatCurrency(card.getSpent(_isPerformanceMode))}원',
-                                    style: const TextStyle(
-                                      color: Color(0xFF2D3142),
-                                      fontSize: 16, 
-                                      fontWeight: FontWeight.bold,
+                                    Text(
+                                      '${_formatCurrency(cardSpent)}원',
+                                      style: const TextStyle(
+                                        color: Color(0xFF2D3142),
+                                        fontSize: 16, 
+                                        fontWeight: FontWeight.bold,
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
-                            ),
-                            Text(
-                              remain >= 0
-                                  ? '${_formatCurrency(remain)}원 남음'
-                                  : '-${_formatCurrency(remain.abs())}원 초과',
-                              style: TextStyle(
-                                color: remain >= 0
-                                    ? const Color(0xFF2F60FF)
-                                    : Colors.redAccent,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
+                              Text(
+                                remain >= 0
+                                    ? '${_formatCurrency(remain)}원 남음'
+                                    : '-${_formatCurrency(remain.abs())}원 초과',
+                                style: TextStyle(
+                                  color: remain >= 0
+                                      ? const Color(0xFF2F60FF)
+                                      : Colors.redAccent,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
+                            ],
+                          ),
+                        );
+                      },
+                    ),
                   ),
-                ),
-              ],
-            ),
-          );
-        },
-      );
-    }
+                ],
+              ),
+            );
+          }
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -943,6 +1069,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
               onTap: () {
                 setState(() {
                   _isPerformanceMode = !_isPerformanceMode;
+                  settingsBox.put('isPerformanceMode', _isPerformanceMode);
                 });
               },
               child: AnimatedContainer(
