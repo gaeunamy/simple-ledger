@@ -863,7 +863,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                   ),
                   
                   if (card.description != null && card.description!.isNotEmpty) ...[
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4),
                     Text(
                       card.description!,
                       style: const TextStyle(
@@ -987,7 +987,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                                                         ],
                                                       ),
                                                       if (expense.memo != null && expense.memo!.isNotEmpty) ...[
-                                                        const SizedBox(height: 4),
+                                                        const SizedBox(height: 3),
                                                         Text(
                                                           expense.memo!,
                                                           style: const TextStyle(
@@ -1275,18 +1275,15 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                                   ),
                                 ),
 
-                                  Text(
-                                    card.total == -1
-                                        ? '한도 없음'
-                                        : (remain >= 0
-                                            ? '${_formatCurrency(remain)}원'
-                                            : '-${_formatCurrency(remain.abs())}원'),
-                                    style: TextStyle(
-                                      color: remain >= 0 ? const Color(0xFF2F60FF) : Colors.redAccent,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
+                                  if (card.total != -1) // 한도 없음일 때는 텍스트를 그리지 않음
+                                    Text(
+                                      remain >= 0 ? '${_formatCurrency(remain)}원' : '-${_formatCurrency(remain.abs())}원',
+                                      style: TextStyle(
+                                        color: remain >= 0 ? const Color(0xFF2F60FF) : Colors.redAccent,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                      ),
                                     ),
-                                  ),
                               ],
                             ),
                           ),
