@@ -59,11 +59,15 @@ class Expense {
   @HiveField(3)
   final bool isInstallment; 
 
+  @HiveField(4)
+  String? memo; 
+
   Expense({
     required this.amount, 
     required this.date, 
     this.installmentMonths, 
-    this.isInstallment = false
+    this.isInstallment = false,
+    this.memo,
   });
 
   String get formattedDate {
@@ -75,22 +79,26 @@ class Expense {
 @HiveType(typeId: 1)
 class CardData {
   @HiveField(0)
-  final String name;
+  String name; 
   
   @HiveField(1)
   final String logoPath;
   
   @HiveField(2)
-  final int total;
+  int total; 
   
   @HiveField(3)
   List<Expense> expenses;
+
+  @HiveField(4)
+  String? description; 
 
   CardData({
     required this.name, 
     required this.logoPath,
     required this.total,
     List<Expense>? expenses,
+    this.description,
   }) : expenses = expenses ?? [];
 
   int getSpent(bool isPerformanceMode, {DateTime? targetDate}) {
@@ -127,8 +135,10 @@ class CardData {
     });
   }
 
-  bool isOverBudget(bool isPerformanceMode, {DateTime? targetDate}) => 
-      getSpent(isPerformanceMode, targetDate: targetDate) > total;
+  bool isOverBudget(bool isPerformanceMode, {DateTime? targetDate}) {
+    if (total <= 0) return false; 
+    return getSpent(isPerformanceMode, targetDate: targetDate) > total;
+  }
       
   double getSpentPercent(bool isPerformanceMode, {DateTime? targetDate}) => 
       total > 0 ? (getSpent(isPerformanceMode, targetDate: targetDate) / total).clamp(0.0, 1.0) : 0.0;
@@ -148,7 +158,6 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
 
   final FocusNode _amountFocusNode = FocusNode();
   bool _isExpenseModalOpen = false;
-
   bool _isPerformanceMode = false;
 
   @override
@@ -203,6 +212,179 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
     return amount.toString().replaceAllMapped(
       RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
       (m) => '${m[1]},',
+    );
+  }
+
+  // 예산/설정 모달창 내 '한도 없음' 디자인을 버튼형으로 개선한 메서드
+  void _showEditCardDialog(BuildContext context, CardData card, StateSetter updateParentModal) {
+    final TextEditingController budgetController = TextEditingController(text: card.total == 0 ? '' : card.total.toString());
+    final TextEditingController descController = TextEditingController(text: card.description ?? '');
+    bool isNoLimit = card.total == 0;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFFE0E5EC),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              title: Text('${card.name} 설정', style: const TextStyle(color: Color(0xFF2D3142), fontWeight: FontWeight.bold, fontSize: 18)),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('예산 설정', style: TextStyle(color: Color(0xFF9098B1), fontSize: 13, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: budgetController,
+                            enabled: !isNoLimit,
+                            keyboardType: TextInputType.number,
+                            style: TextStyle(
+                              color: isNoLimit ? const Color(0xFF9098B1) : const Color(0xFF2D3142), 
+                              fontWeight: FontWeight.bold
+                            ),
+                            decoration: InputDecoration(
+                              hintText: isNoLimit ? '한도 없는 카드' : '예산 금액 입력',
+                              hintStyle: const TextStyle(color: Color(0xFF9098B1), fontSize: 14),
+                              filled: true,
+                              // 한도 없음 상태일 땐 투명도를 주어 비활성화 느낌 강조
+                              fillColor: isNoLimit ? const Color(0xFFD1D9E6).withOpacity(0.5) : const Color(0xFFD1D9E6),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        
+                        // 기존 체크박스를 제거하고 '할부'와 동일한 뉴모피즘 토글 버튼 적용
+                        GestureDetector(
+                          onTap: () {
+                            setDialogState(() {
+                              isNoLimit = !isNoLimit;
+                              if (isNoLimit) budgetController.clear();
+                            });
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 150),
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            decoration: isNoLimit
+                                ? BoxDecoration(
+                                    color: const Color(0xFFE0E5EC),
+                                    borderRadius: BorderRadius.circular(12),
+                                    boxShadow: [
+                                      const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 3),
+                                      BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.4), offset: const Offset(2, 2), blurRadius: 3),
+                                    ],
+                                  )
+                                : BoxDecoration(
+                                    color: const Color(0xFFD1D9E6),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                            child: Text(
+                              '한도 없음',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: isNoLimit ? const Color(0xFF2F60FF) : const Color(0xFF9098B1),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    const Text('카드 설명 (메모)', style: TextStyle(color: Color(0xFF9098B1), fontSize: 13, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: descController,
+                      maxLines: 1,
+                      style: const TextStyle(color: Color(0xFF2D3142), fontWeight: FontWeight.bold),
+                      decoration: InputDecoration(
+                        hintText: '예: 관리비, 통신비, 정수기',
+                        hintStyle: const TextStyle(color: Color(0xFF9098B1), fontSize: 14),
+                        filled: true,
+                        fillColor: const Color(0xFFD1D9E6),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('취소', style: TextStyle(color: Color(0xFF9098B1))),
+                ),
+                TextButton(
+                  onPressed: () {
+                    setState(() {
+                      card.total = isNoLimit ? 0 : (int.tryParse(budgetController.text.replaceAll(',', '')) ?? 0);
+                      card.description = descController.text.trim();
+                      int idx = cards.indexOf(card);
+                      cardBox.putAt(idx, card);
+                    });
+                    updateParentModal(() {});
+                    Navigator.pop(context);
+                  },
+                  child: const Text('확인', style: TextStyle(color: Color(0xFF2F60FF), fontWeight: FontWeight.bold)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showExpenseMemoDialog(BuildContext context, CardData card, Expense expense, StateSetter updateParentModal) {
+    final TextEditingController memoController = TextEditingController(text: expense.memo ?? '');
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFFE0E5EC),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          title: const Text('지출 메모', style: TextStyle(color: Color(0xFF2D3142), fontWeight: FontWeight.bold, fontSize: 18)),
+          content: TextField(
+            controller: memoController,
+            maxLines: 1,
+            style: const TextStyle(color: Color(0xFF2D3142), fontWeight: FontWeight.bold),
+            decoration: InputDecoration(
+              hintText: '예: 마트, 주유, 배달',
+              hintStyle: const TextStyle(color: Color(0xFF9098B1), fontSize: 14),
+              filled: true,
+              fillColor: const Color(0xFFD1D9E6),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('취소', style: TextStyle(color: Color(0xFF9098B1))),
+            ),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  expense.memo = memoController.text.trim();
+                  int idx = cards.indexOf(card);
+                  cardBox.putAt(idx, card);
+                });
+                updateParentModal(() {});
+                Navigator.pop(context);
+              },
+              child: const Text('확인', style: TextStyle(color: Color(0xFF2F60FF), fontWeight: FontWeight.bold)),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -613,13 +795,26 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        card.name,
-                        style: const TextStyle(
-                          color: Color(0xFF2D3142),
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
+                      Row(
+                        children: [
+                          Text(
+                            card.name,
+                            style: const TextStyle(
+                              color: Color(0xFF2D3142),
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          GestureDetector(
+                            onTap: () => _showEditCardDialog(context, card, setModalState),
+                            child: const Icon(
+                              Icons.edit,
+                              size: 16,
+                              color: Color(0xFF9098B1),
+                            ),
+                          ),
+                        ],
                       ),
                       GestureDetector(
                         onTap: () {
@@ -648,6 +843,18 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                       ),
                     ],
                   ),
+                  
+                  if (card.description != null && card.description!.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      card.description!,
+                      style: const TextStyle(
+                        color: Color(0xFF9098B1),
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                  
                   const SizedBox(height: 24),
 
                   Builder(
@@ -700,54 +907,83 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                                   return Padding(
                                     padding: const EdgeInsets.only(bottom: 20),
                                     child: Row(
+                                      crossAxisAlignment: CrossAxisAlignment.center, 
                                       children: [
-                                        SizedBox(
-                                          width: 60,
-                                          child: Text(
-                                            expense.formattedDate,
-                                            style: const TextStyle(
-                                              color: Color(0xFF9098B1),
-                                              fontSize: 14,
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 16),
                                         Expanded(
-                                          child: Row(
-                                            mainAxisAlignment: MainAxisAlignment.center,
-                                            crossAxisAlignment: CrossAxisAlignment.center,
-                                            children: [
-                                              if (expense.isInstallment) ...[
-                                                Container(
-                                                  width: 6,
-                                                  height: 6,
-                                                  decoration: BoxDecoration(
-                                                    color: circleColor,
-                                                    shape: BoxShape.circle,
+                                          child: GestureDetector(
+                                            onTap: () => _showExpenseMemoDialog(context, card, expense, setModalState),
+                                            behavior: HitTestBehavior.opaque, 
+                                            child: Row(
+                                              crossAxisAlignment: CrossAxisAlignment.center,
+                                              children: [
+                                                SizedBox(
+                                                  width: 60,
+                                                  child: Text(
+                                                    expense.formattedDate,
+                                                    style: const TextStyle(
+                                                      color: Color(0xFF9098B1),
+                                                      fontSize: 14,
+                                                    ),
                                                   ),
                                                 ),
-                                                const SizedBox(width: 6),
-                                              ],
-                                              Text(
-                                                '${_formatCurrency(displayedAmount)}원',
-                                                style: const TextStyle(
-                                                  color: Color(0xFF2D3142),
-                                                  fontSize: 16,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                              if (_isPerformanceMode && expense.isInstallment && expense.installmentMonths != null) ...[
-                                                const SizedBox(width: 4),
-                                                Text(
-                                                  '/${expense.installmentMonths}개월',
-                                                  style: const TextStyle(
-                                                    color: Color(0xFF9098B1),
-                                                    fontSize: 12,
-                                                    fontWeight: FontWeight.normal,
+                                                const SizedBox(width: 16),
+                                                Expanded(
+                                                  child: Column(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    crossAxisAlignment: CrossAxisAlignment.center,
+                                                    children: [
+                                                      Row(
+                                                        mainAxisAlignment: MainAxisAlignment.center,
+                                                        crossAxisAlignment: CrossAxisAlignment.center,
+                                                        children: [
+                                                          if (expense.isInstallment) ...[
+                                                            Container(
+                                                              width: 6,
+                                                              height: 6,
+                                                              decoration: BoxDecoration(
+                                                                color: circleColor,
+                                                                shape: BoxShape.circle,
+                                                               ),
+                                                            ),
+                                                            const SizedBox(width: 6),
+                                                          ],
+                                                          Text(
+                                                            '${_formatCurrency(displayedAmount)}원',
+                                                            style: const TextStyle(
+                                                              color: Color(0xFF2D3142),
+                                                              fontSize: 16,
+                                                              fontWeight: FontWeight.bold,
+                                                            ),
+                                                          ),
+                                                          if (_isPerformanceMode && expense.isInstallment && expense.installmentMonths != null) ...[
+                                                            const SizedBox(width: 4),
+                                                            Text(
+                                                              '/${expense.installmentMonths}개월',
+                                                              style: const TextStyle(
+                                                                color: Color(0xFF9098B1),
+                                                                fontSize: 12,
+                                                                fontWeight: FontWeight.normal,
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ],
+                                                      ),
+                                                      if (expense.memo != null && expense.memo!.isNotEmpty) ...[
+                                                        const SizedBox(height: 4),
+                                                        Text(
+                                                          expense.memo!,
+                                                          style: const TextStyle(
+                                                            color: Color(0xFF9098B1),
+                                                            fontSize: 12,
+                                                          ),
+                                                          textAlign: TextAlign.center,
+                                                        ),
+                                                      ],
+                                                    ],
                                                   ),
                                                 ),
                                               ],
-                                            ],
+                                            ),
                                           ),
                                         ),
                                         const SizedBox(width: 16),
@@ -762,6 +998,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                                           },
                                           child: Container(
                                             padding: const EdgeInsets.all(8),
+                                            color: Colors.transparent, 
                                             child: const Icon(
                                               Icons.close,
                                               color: Colors.redAccent,
@@ -788,6 +1025,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
 
   void _showSummaryModal(BuildContext context) {
     DateTime selectedSummaryDate = DateTime.now();
+    int? draggingIndex; 
 
     showModalBottomSheet(
       context: context,
@@ -915,81 +1153,123 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                   ),
                   const SizedBox(height: 40),
                   const Text(
-                    '카드별 소비',
+                    '카드별 소비', 
                     style: TextStyle(
                       color: Color(0xFF9098B1),
-                      fontSize: 16,
+                      fontSize: 14,
                     ),
                   ),
                   const SizedBox(height: 20),
                   Expanded(
-                    child: ListView.builder(
-                      itemCount: cards.length, 
+                    child: ReorderableListView.builder(
+                      itemCount: cards.length,
+                      onReorderStart: (index) {
+                        setModalState(() {
+                          draggingIndex = index; 
+                        });
+                        HapticFeedback.lightImpact(); 
+                      },
+                      onReorderEnd: (index) {
+                        setModalState(() {
+                          draggingIndex = null; 
+                        });
+                      },
+                      onReorder: (oldIndex, newIndex) {
+                        if (newIndex > oldIndex) {
+                          newIndex -= 1;
+                        }
+                        setModalState(() {
+                          final item = cards.removeAt(oldIndex);
+                          cards.insert(newIndex, item);
+                        });
+                        setState(() {
+                          for (int i = 0; i < cards.length; i++) {
+                            cardBox.putAt(i, cards[i]);
+                          }
+                        });
+                      },
                       itemBuilder: (_, index) {
                         final card = cards[index];
                         final cardSpent = card.getSpent(_isPerformanceMode, targetDate: selectedSummaryDate);
                         final remain = card.total - cardSpent;
+                        
+                        final isDragging = draggingIndex == index; 
 
                         return Padding(
+                          key: ValueKey(card.name), 
                           padding: const EdgeInsets.only(bottom: 20),
-                          child: Row(
-                            children: [
-                              Container(
-                                margin: const EdgeInsets.only(left: 4),
-                                width: 24, 
-                                height: 24,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFE0E5EC),
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 3),
-                                    BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 3),
-                                  ],
-                                ),
-                                alignment: Alignment.center,
-                                child: Transform.scale(
-                                  scale: card.name == '국민카드' 
-                                      ? 1.8 
-                                      : card.name == '삼성카드' 
-                                          ? 1.3 
-                                          : 1.0, 
-                                  child: Image.asset(
-                                    card.logoPath,
-                                    width: 16, 
-                                    height: 16,
-                                    fit: BoxFit.contain,
-                                    errorBuilder: (context, error, stackTrace) {
-                                      return const Icon(Icons.credit_card, size: 12, color: Color(0xFF2F60FF));
-                                    },
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque, 
+                            onTap: () {
+                              Navigator.pop(context); 
+                              _showCardDetailModal(context, card); 
+                            },
+                            child: Row(
+                              children: [
+                                Container(
+                                  margin: const EdgeInsets.only(left: 4),
+                                  width: 24, 
+                                  height: 24,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFE0E5EC),
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 3),
+                                      BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 3),
+                                    ],
                                   ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(card.name, style: const TextStyle(color: Color(0xFF9098B1), fontSize: 12)),
-                                    Text(
-                                      '${_formatCurrency(cardSpent)}원',
-                                      style: const TextStyle(color: Color(0xFF2D3142), fontSize: 16, fontWeight: FontWeight.bold),
+                                  alignment: Alignment.center,
+                                  child: Transform.scale(
+                                    scale: card.name == '국민카드' 
+                                        ? 1.8 
+                                        : card.name == '삼성카드' 
+                                            ? 1.3 
+                                            : 1.0, 
+                                    child: Image.asset(
+                                      card.logoPath,
+                                      width: 16, 
+                                      height: 16,
+                                      fit: BoxFit.contain,
+                                      errorBuilder: (context, error, stackTrace) {
+                                        return const Icon(Icons.credit_card, size: 12, color: Color(0xFF2F60FF));
+                                      },
                                     ),
-                                  ],
-                                ),
-                              ),
-                            
-                              if (card.name != '신한카드') 
-                                Text(
-                                  remain >= 0
-                                      ? '${_formatCurrency(remain)}원'
-                                      : '-${_formatCurrency(remain.abs())}원',
-                                  style: TextStyle(
-                                    color: remain >= 0 ? const Color(0xFF2F60FF) : Colors.redAccent,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
-                            ],
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(card.name, style: const TextStyle(color: Color(0xFF9098B1), fontSize: 12)),
+                                      Text(
+                                        '${_formatCurrency(cardSpent)}원',
+                                        style: const TextStyle(color: Color(0xFF2D3142), fontSize: 16, fontWeight: FontWeight.bold),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              
+                                if (isDragging)
+                                  const Padding(
+                                    padding: EdgeInsets.symmetric(horizontal: 8.0),
+                                    child: Icon(Icons.drag_handle, color: Color(0xFF2F60FF), size: 28),
+                                  )
+                                else if (card.name != '신한카드') 
+                                  Text(
+                                    card.total == 0 
+                                        ? '한도 없음'
+                                        : (remain >= 0
+                                            ? '${_formatCurrency(remain)}원'
+                                            : '-${_formatCurrency(remain.abs())}원'),
+                                    style: TextStyle(
+                                      color: remain >= 0 ? const Color(0xFF2F60FF) : Colors.redAccent,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
                         );
                       },
@@ -1011,7 +1291,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
     final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
     final progressPercent = now.day / daysInMonth;
 
-    final mainScreenCards = cards.where((card) => card.name != '우리카드' && card.name != '삼성카드').toList();
+    final mainScreenCards = cards.take(4).toList();
 
     return Scaffold(
       appBar: AppBar(
@@ -1376,9 +1656,12 @@ class _BudgetCardWidgetState extends State<BudgetCardWidget> {
                   ),
                 ),
                 const SizedBox(width: 6),
-                Text(
-                  widget.data.name,
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
+                Expanded(
+                  child: Text(
+                    widget.data.name,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
+                  ),
                 ),
               ],
             ),
@@ -1419,13 +1702,13 @@ class _BudgetCardWidgetState extends State<BudgetCardWidget> {
             width: 100,
             height: 100,
             child: CircularProgressIndicator(
-              value: spentPercent,
+              value: widget.data.total == 0 ? 0.0 : spentPercent, 
               strokeWidth: 7,
               valueColor: AlwaysStoppedAnimation<Color>(activeColor),
               strokeCap: StrokeCap.round,
             ),
           ),
-          if (isOver)
+          if (isOver && widget.data.total > 0)
             SizedBox(
               width: 100,
               height: 100,
