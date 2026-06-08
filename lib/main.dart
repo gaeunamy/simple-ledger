@@ -262,6 +262,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                             enabled: !isNoLimit,
                             keyboardType: TextInputType.number,
                             style: TextStyle(
+                              fontSize: 16,
                               color: isNoLimit ? const Color(0xFF9098B1) : const Color(0xFF2D3142), 
                               fontWeight: FontWeight.bold
                             ),
@@ -303,7 +304,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                             child: Text(
                               '한도 없음',
                               style: TextStyle(
-                                fontSize: 13,
+                                fontSize: 14,
                                 fontWeight: FontWeight.bold,
                                 color: isNoLimit ? const Color(0xFF2F60FF) : const Color(0xFF9098B1),
                               ),
@@ -318,7 +319,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                     TextField(
                       controller: descController,
                       maxLines: 1,
-                      style: const TextStyle(color: Color(0xFF2D3142), fontWeight: FontWeight.bold),
+                      style: const TextStyle(fontSize: 16, color: Color(0xFF2D3142), fontWeight: FontWeight.bold),
                       decoration: InputDecoration(
                         hintText: '예: 관리비, 통신비, 정수기',
                         hintStyle: const TextStyle(color: Color(0xFF9098B1), fontSize: 14),
@@ -371,7 +372,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
           content: TextField(
             controller: memoController,
             maxLines: 1,
-            style: const TextStyle(color: Color(0xFF2D3142), fontWeight: FontWeight.bold),
+            style: const TextStyle(fontSize: 16, color: Color(0xFF2D3142), fontWeight: FontWeight.bold),
             decoration: InputDecoration(
               hintText: '예: 마트, 주유, 배달',
               hintStyle: const TextStyle(color: Color(0xFF9098B1), fontSize: 14),
@@ -563,7 +564,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                                     child: Text(
                                       '할부',
                                       style: TextStyle(
-                                        fontSize: 13,
+                                        fontSize: 14,
                                         fontWeight: FontWeight.bold,
                                         color: isInstallmentActive ? const Color(0xFF2F60FF) : const Color(0xFF9098B1),
                                       ),
@@ -863,7 +864,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                   ),
                   
                   if (card.description != null && card.description!.isNotEmpty) ...[
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 0.5),
                     Text(
                       card.description!,
                       style: const TextStyle(
@@ -987,7 +988,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                                                         ],
                                                       ),
                                                       if (expense.memo != null && expense.memo!.isNotEmpty) ...[
-                                                        const SizedBox(height: 3),
+                                                        const SizedBox(height: 2),
                                                         Text(
                                                           expense.memo!,
                                                           style: const TextStyle(
