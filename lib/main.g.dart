@@ -17,27 +17,30 @@ class ExpenseAdapter extends TypeAdapter<Expense> {
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
     return Expense(
-      amount: fields[0] as int,
-      date: fields[1] as DateTime,
-      installmentMonths: fields[2] as int?,
-      isInstallment: fields[3] as bool,
-      memo: fields[4] as String?,
+      id: fields[0] as String,
+      amount: fields[1] as int,
+      date: fields[2] as DateTime,
+      installmentMonths: fields[3] as int?,
+      isInstallment: fields[4] as bool,
+      memo: fields[5] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, Expense obj) {
     writer
-      ..writeByte(5)
+      ..writeByte(6)
       ..writeByte(0)
-      ..write(obj.amount)
+      ..write(obj.id)
       ..writeByte(1)
-      ..write(obj.date)
+      ..write(obj.amount)
       ..writeByte(2)
-      ..write(obj.installmentMonths)
+      ..write(obj.date)
       ..writeByte(3)
-      ..write(obj.isInstallment)
+      ..write(obj.installmentMonths)
       ..writeByte(4)
+      ..write(obj.isInstallment)
+      ..writeByte(5)
       ..write(obj.memo);
   }
 
@@ -63,11 +66,11 @@ class CardDataAdapter extends TypeAdapter<CardData> {
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
     return CardData(
-      name: fields[0] as String,
-      logoPath: fields[1] as String,
+      id: fields[0] as String,
+      name: fields[1] as String,
       total: fields[2] as int,
-      expenses: (fields[3] as List?)?.cast<Expense>(),
-      description: fields[4] as String?,
+      expenses: (fields[3] as List).cast<Expense>(),
+      orderIndex: fields[4] as int,
     );
   }
 
@@ -76,15 +79,15 @@ class CardDataAdapter extends TypeAdapter<CardData> {
     writer
       ..writeByte(5)
       ..writeByte(0)
-      ..write(obj.name)
+      ..write(obj.id)
       ..writeByte(1)
-      ..write(obj.logoPath)
+      ..write(obj.name)
       ..writeByte(2)
       ..write(obj.total)
       ..writeByte(3)
       ..write(obj.expenses)
       ..writeByte(4)
-      ..write(obj.description);
+      ..write(obj.orderIndex);
   }
 
   @override
