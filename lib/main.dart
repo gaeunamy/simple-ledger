@@ -4,6 +4,10 @@ import 'package:flutter/services.dart';
 
 part 'main.g.dart'; 
 
+// ============================================================================
+// 1. 앱 진입점 및 로컬 데이터베이스(Hive) 초기화
+// ============================================================================
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -18,6 +22,9 @@ void main() async {
   runApp(const MyApp());
 }
 
+// ============================================================================
+// 3. 앱 인프라 설정 (루트 위젯 및 글로벌 테마)
+// ============================================================================
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -45,6 +52,11 @@ class MyApp extends StatelessWidget {
   }
 }
 
+// ============================================================================
+// 2. 데이터 모델 (Hive DB 스토리지 엔티티)
+// ============================================================================
+
+// [지출 내역 모델]
 @HiveType(typeId: 0)
 class Expense {
   @HiveField(0)
@@ -76,6 +88,7 @@ class Expense {
   }
 }
 
+// [카드 정보 및 실적/청구액 계산 모델]
 @HiveType(typeId: 1)
 class CardData {
   @HiveField(0)
@@ -144,6 +157,9 @@ class CardData {
       total > 0 ? (getSpent(isPerformanceMode, targetDate: targetDate) / total).clamp(0.0, 1.0) : 0.0;
 }
 
+// ============================================================================
+// 4. 메인 화면 (다중 카드 및 지출 관리 화면)
+// ============================================================================
 class MultiCardScreen extends StatefulWidget {
   const MultiCardScreen({super.key});
 
@@ -152,6 +168,10 @@ class MultiCardScreen extends StatefulWidget {
 }
 
 class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingObserver {
+
+  // --------------------------------------------------------------------------
+  // 3-1. 상태 변수 및 생명주기 관리 (Lifecycle & Variables)
+  // --------------------------------------------------------------------------
   late Box<CardData> cardBox;
   late Box settingsBox;
   late List<CardData> cards;
@@ -208,6 +228,9 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
     }
   }
 
+  // --------------------------------------------------------------------------
+  // 3-2. 공통 유틸리티 (포맷팅 등)
+  // --------------------------------------------------------------------------
   String _formatCurrency(int amount) {
     return amount.toString().replaceAllMapped(
       RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
@@ -215,6 +238,11 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
     );
   }
 
+  // ============================================================================
+  // 4. 모달 및 팝업창 관리 (Dialogs & BottomSheets)
+  // ============================================================================
+
+  // [카드 예산 및 메모 설정 다이얼로그]
   void _showEditCardDialog(BuildContext context, CardData card, StateSetter updateParentModal) {
     final TextEditingController budgetController = TextEditingController(text: card.total == 0 ? '' : card.total.toString());
     final TextEditingController descController = TextEditingController(text: card.description ?? '');
@@ -339,6 +367,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
     );
   }
 
+  // [개별 지출 내역 메모 수정 다이얼로그]
   void _showExpenseMemoDialog(BuildContext context, CardData card, Expense expense, StateSetter updateParentModal) {
     final TextEditingController memoController = TextEditingController(text: expense.memo ?? '');
 
@@ -385,6 +414,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
     );
   }
 
+  // [새로운 지출 내역 추가 바텀 시트 (할부 입력 포함)]
   void _showAddExpenseModal(BuildContext context, {int initialCardIndex = 0}) {
     _isExpenseModalOpen = true;
     int selectedCardIndex = initialCardIndex;
@@ -757,6 +787,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
     });
   }
 
+  // [특정 카드의 전체 지출 상세 내역 바텀 시트]
   void _showCardDetailModal(BuildContext context, CardData card) {
     showModalBottomSheet(
       context: context,
@@ -1020,9 +1051,9 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
     );
   }
 
+  // [전체 소비 요약 및 카드 순서 변경(드래그 앤 드롭) 바텀 시트]
   void _showSummaryModal(BuildContext context) {
     DateTime selectedSummaryDate = DateTime.now();
-    int? draggingIndex; 
 
     showModalBottomSheet(
       context: context,
@@ -1172,18 +1203,14 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                   const SizedBox(height: 20),
                   Expanded(
                     child: ReorderableListView.builder(
+                      // [핵심 변경점] proxyDecorator를 사용하여 드래그 시 아이템의 기본 하얀 배경이 뜨지 않고 투명하게 유지되도록 처리
+                      proxyDecorator: (Widget child, int index, Animation<double> animation) {
+                        return Material(
+                          type: MaterialType.transparency,
+                          child: child,
+                        );
+                      },
                       itemCount: cards.length,
-                      onReorderStart: (index) {
-                        setModalState(() {
-                          draggingIndex = index; 
-                        });
-                        HapticFeedback.lightImpact(); 
-                      },
-                      onReorderEnd: (index) {
-                        setModalState(() {
-                          draggingIndex = null; 
-                        });
-                      },
                       onReorder: (oldIndex, newIndex) {
                         if (newIndex > oldIndex) {
                           newIndex -= 1;
@@ -1202,8 +1229,6 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                         final card = cards[index];
                         final cardSpent = card.getSpent(_isPerformanceMode, targetDate: selectedSummaryDate);
                         final remain = card.total - cardSpent;
-                        
-                        final isDragging = draggingIndex == index; 
 
                         return Padding(
                           key: ValueKey(card.name), 
@@ -1259,13 +1284,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                                     ],
                                   ),
                                 ),
-                              
-                                if (isDragging)
-                                  const Padding(
-                                    padding: EdgeInsets.symmetric(horizontal: 8.0),
-                                    child: Icon(Icons.drag_handle, color: Color(0xFF2F60FF), size: 28),
-                                  )
-                                else if (card.name != '신한카드') 
+
                                   Text(
                                     card.total == 0 
                                         ? '한도 없음'
@@ -1294,6 +1313,9 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
     );
   }
 
+  // ============================================================================
+  // 5. 메인 화면 렌더링 (Main Screen UI)
+  // ============================================================================
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
@@ -1435,6 +1457,9 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
     );
   }
 
+  // --------------------------------------------------------------------------
+  // 5-1. 내부 서브 컴포넌트: 요약 모달용 통계 카드
+  // --------------------------------------------------------------------------
   Widget _summaryCard(
       String title,
       String value,
@@ -1505,6 +1530,9 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
       );
     }
 
+  // --------------------------------------------------------------------------
+  // 5-2. 내부 서브 컴포넌트: 상단 이번 달 진행률 바 (게이지)
+  // --------------------------------------------------------------------------
   Widget _buildProgressSection(double progress, int currentDay, int currentMonth) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1603,6 +1631,9 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
   }
 }
 
+// ============================================================================
+// 6. 커스텀 위젯: 개별 카드 (그리드뷰 내부 아이템 및 도넛 차트)
+// ============================================================================
 class BudgetCardWidget extends StatefulWidget {
   final CardData data;
   final bool isPerformanceMode;
