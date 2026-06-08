@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:flutter/services.dart';
 
 part 'main.g.dart'; 
 
@@ -92,7 +93,6 @@ class CardData {
     List<Expense>? expenses,
   }) : expenses = expenses ?? [];
 
-  // 특정 기준 월(targetDate)을 입력받아 해당 월의 금액을 계산하도록 업그레이드 (없으면 현재 달력 기준)
   int getSpent(bool isPerformanceMode, {DateTime? targetDate}) {
     final target = targetDate ?? DateTime.now();
 
@@ -166,7 +166,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
         CardData(name: '국민카드', logoPath: 'assets/images/kb.png', total: 300000, expenses: []),
         CardData(name: '하나카드', logoPath: 'assets/images/hana.png', total: 300000, expenses: []),
         CardData(name: '신한카드', logoPath: 'assets/images/shinhan.png', total: 1000000, expenses: []),
-        CardData(name: '삼성카드', logoPath: 'assets/images/samsung.png', total: 500000, expenses: []),
+        CardData(name: '삼성카드', logoPath: 'assets/images/samsung.png', total: 300000, expenses: []),
         CardData(name: '우리카드', logoPath: 'assets/images/woori.png', total: 300000, expenses: []),
       ]);
     }
@@ -184,9 +184,16 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && _isExpenseModalOpen) {
-      Future.delayed(const Duration(milliseconds: 100), () {
+      Future.delayed(const Duration(milliseconds: 300), () {
         if (mounted && _isExpenseModalOpen) {
-          _amountFocusNode.requestFocus();
+          _amountFocusNode.unfocus();
+          
+          Future.delayed(const Duration(milliseconds: 50), () {
+            if (mounted) {
+              _amountFocusNode.requestFocus();
+              SystemChannels.textInput.invokeMethod('TextInput.show');
+            }
+          });
         }
       });
     }
@@ -661,16 +668,13 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                               final now = DateTime.now();
                               bool shouldShow = false;
 
-                              // 💡 [필터링 로직] 리스트에는 이번 달 관련 내역만 띄움
                               if (_isPerformanceMode) {
-                                // 실적 보기: 이번 달에 결제한 건만 보임 (개월 수 없는 할부는 제외)
                                 if (expense.date.year == now.year && expense.date.month == now.month) {
                                   if (!(expense.isInstallment && expense.installmentMonths == null)) {
                                     shouldShow = true;
                                   }
                                 }
                               } else {
-                                // 청구액 보기: 이번 달 결제 건이거나, 과거에 결제했어도 이번 달에 할부금이 청구되는 경우 보임
                                 if (expense.isInstallment && expense.installmentMonths != null) {
                                   int monthsPassed = (now.year - expense.date.year) * 12 + (now.month - expense.date.month);
                                   if (monthsPassed >= 0 && monthsPassed < expense.installmentMonths!) {
@@ -788,7 +792,6 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
   }
 
   void _showSummaryModal(BuildContext context) {
-    // 💡 요약 창 전용 달력 탐색기 기준일 (기본값: 오늘 달력)
     DateTime selectedSummaryDate = DateTime.now();
 
     showModalBottomSheet(
@@ -798,7 +801,6 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
       builder: (_) {
         return StatefulBuilder(
           builder: (context, setModalState) {
-            // 선택된 월(selectedSummaryDate)을 기준으로 금액 계산
             final totalSpent = cards.fold<int>(0, (sum, card) => sum + card.getSpent(_isPerformanceMode, targetDate: selectedSummaryDate));
             final totalBudget = cards.fold<int>(0, (sum, card) => sum + card.total);
             final totalRemaining = totalBudget - totalSpent;
@@ -827,7 +829,6 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                   ),
                   const SizedBox(height: 24),
                   
-                  // 💡 상단 헤더 영역에 달력 좌우 스와이프 버튼 추가
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -841,6 +842,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                       ),
                       Row(
                         children: [
+                          // 1. 왼쪽 < 버튼
                           GestureDetector(
                             onTap: () {
                               setModalState(() {
@@ -848,7 +850,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                               });
                             },
                             child: Container(
-                              padding: const EdgeInsets.all(6),
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                               decoration: BoxDecoration(
                                 color: const Color(0xFFE0E5EC),
                                 borderRadius: BorderRadius.circular(8),
@@ -857,7 +859,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                                   BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 2),
                                 ],
                               ),
-                              child: const Icon(Icons.chevron_left, size: 20, color: Color(0xFF2D3142)),
+                              child: const Icon(Icons.chevron_left, size: 18, color: Color(0xFF2D3142)),
                             ),
                           ),
                           const SizedBox(width: 14),
@@ -870,10 +872,11 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                                 color: Color(0xFF2F60FF),
                                 fontSize: 14,
                                 fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
-                          ),
                           const SizedBox(width: 14),
+                          // 2. 오른쪽 > 버튼
                           GestureDetector(
                             onTap: () {
                               setModalState(() {
@@ -881,7 +884,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                               });
                             },
                             child: Container(
-                              padding: const EdgeInsets.all(6),
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                               decoration: BoxDecoration(
                                 color: const Color(0xFFE0E5EC),
                                 borderRadius: BorderRadius.circular(8),
@@ -890,11 +893,11 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                                   BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 2),
                                 ],
                               ),
-                              child: const Icon(Icons.chevron_right, size: 20, color: Color(0xFF2D3142)),
+                              child: const Icon(Icons.chevron_right, size: 18, color: Color(0xFF2D3142)),
                             ),
                           ),
                         ],
-                      ),
+                      )
                     ],
                   ),
                   const SizedBox(height: 24),
@@ -931,7 +934,6 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                       itemCount: cards.length, 
                       itemBuilder: (_, index) {
                         final card = cards[index];
-                        // 카드별 상세 금액도 선택된 달(selectedSummaryDate)을 기준으로 계산
                         final cardSpent = card.getSpent(_isPerformanceMode, targetDate: selectedSummaryDate);
                         final remain = card.total - cardSpent;
 
@@ -940,6 +942,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                           child: Row(
                             children: [
                               Container(
+                                margin: const EdgeInsets.only(left: 4),
                                 width: 24, 
                                 height: 24,
                                 decoration: BoxDecoration(
@@ -951,7 +954,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                                   ],
                                 ),
                                 alignment: Alignment.center,
-                                clipBehavior: Clip.antiAlias,
+                                // clipBehavior: Clip.antiAlias,
                                 child: Transform.scale(
                                   scale: card.name == '국민카드' 
                                       ? 1.8 
@@ -974,36 +977,26 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      card.name,
-                                      style: const TextStyle(
-                                        color: Color(0xFF9098B1),
-                                        fontSize: 12, 
-                                      ),
-                                    ),
+                                    Text(card.name, style: const TextStyle(color: Color(0xFF9098B1), fontSize: 12)),
                                     Text(
                                       '${_formatCurrency(cardSpent)}원',
-                                      style: const TextStyle(
-                                        color: Color(0xFF2D3142),
-                                        fontSize: 16, 
-                                        fontWeight: FontWeight.bold,
-                                      ),
+                                      style: const TextStyle(color: Color(0xFF2D3142), fontSize: 16, fontWeight: FontWeight.bold),
                                     ),
                                   ],
                                 ),
                               ),
-                              Text(
-                                remain >= 0
-                                    ? '${_formatCurrency(remain)}원 남음'
-                                    : '-${_formatCurrency(remain.abs())}원 초과',
-                                style: TextStyle(
-                                  color: remain >= 0
-                                      ? const Color(0xFF2F60FF)
-                                      : Colors.redAccent,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
+                            
+                              if (card.name != '신한카드') 
+                                Text(
+                                  remain >= 0
+                                      ? '${_formatCurrency(remain)}원'
+                                      : '-${_formatCurrency(remain.abs())}원',
+                                  style: TextStyle(
+                                    color: remain >= 0 ? const Color(0xFF2F60FF) : Colors.redAccent,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
-                              ),
                             ],
                           ),
                         );
@@ -1103,7 +1096,6 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
       ),
       body: SafeArea(
         bottom: true,
-        child: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(20.0),
           child: Column(
@@ -1131,6 +1123,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
               
               const SizedBox(height: 55),
               
+              // 버튼 부분
               Center(
                 child: GestureDetector(
                   onTap: () => _showAddExpenseModal(context),
@@ -1139,43 +1132,24 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(16),
                       gradient: const LinearGradient(
-                        colors: [
-                          Color(0xFF4A7DFF),
-                          Color(0xFF1A4BFF),
-                        ],
+                        colors: [Color(0xFF4A7DFF), Color(0xFF1A4BFF)],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF2F60FF).withOpacity(0.4),
-                        offset: const Offset(4, 6),
-                        blurRadius: 12,
                       ),
-                      const BoxShadow(
-                        color: Colors.white,
-                        offset: Offset(-4, -4),
-                        blurRadius: 8,
-                      ),
-                    ],
-                  ),
-                  child: const Text(
-                    '지출 내역 추가',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                      boxShadow: [
+                        BoxShadow(color: const Color(0xFF2F60FF).withOpacity(0.4), offset: const Offset(4, 6), blurRadius: 12),
+                        const BoxShadow(color: Colors.white, offset: Offset(-4, -4), blurRadius: 8),
+                      ],
                     ),
+                    child: const Text('지출 내역 추가', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
                   ),
                 ),
               ),
-            ),
-            
-            const SizedBox(height: 40),
-          ],
+              
+              const SizedBox(height: 40),
+            ],
+          ),
         ),
-      ),
-      ),
       ),
     );
   }
@@ -1453,17 +1427,11 @@ class _BudgetCardWidgetState extends State<BudgetCardWidget> {
           SizedBox(
             width: 100,
             height: 100,
-            child: TweenAnimationBuilder<double>(
-              key: ValueKey(widget.isPerformanceMode),
-              tween: Tween<double>(begin: 0.0, end: spentPercent),
-              duration: const Duration(milliseconds: 1000),
-              curve: Curves.easeOutCubic,
-              builder: (context, value, _) => CircularProgressIndicator(
-                value: value,
-                strokeWidth: 7,
-                valueColor: AlwaysStoppedAnimation<Color>(activeColor),
-                strokeCap: StrokeCap.round,
-              ),
+            child: CircularProgressIndicator(
+              value: spentPercent,
+              strokeWidth: 7,
+              valueColor: AlwaysStoppedAnimation<Color>(activeColor),
+              strokeCap: StrokeCap.round,
             ),
           ),
           if (isOver)
@@ -1481,12 +1449,12 @@ class _BudgetCardWidgetState extends State<BudgetCardWidget> {
             width: 90,
             child: FittedBox(
               fit: BoxFit.scaleDown,
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 500),
-                child: Text(
-                  _formatCurrency(spentAmount),
-                  key: ValueKey(spentAmount),
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
+              child: Text(
+                _formatCurrency(spentAmount),
+                style: const TextStyle(
+                  fontSize: 16, 
+                  fontWeight: FontWeight.bold, 
+                  color: Color(0xFF2D3142)
                 ),
               ),
             ),
