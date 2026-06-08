@@ -23,7 +23,7 @@ void main() async {
 }
 
 // ============================================================================
-// 3. 앱 인프라 설정 (루트 위젯 및 글로벌 테마)
+// 2. 앱 인프라 설정 (루트 위젯 및 글로벌 테마)
 // ============================================================================
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -43,8 +43,10 @@ class MyApp extends StatelessWidget {
       theme: ThemeData.light().copyWith(
         scaffoldBackgroundColor: const Color(0xFFE0E5EC), 
         appBarTheme: const AppBarTheme(
-          backgroundColor: Colors.transparent,
+          backgroundColor: Color(0xFFE0E5EC),
           elevation: 0,
+          iconTheme: IconThemeData(color: Color(0xFF2D3142)),
+          titleTextStyle: TextStyle(color: Color(0xFF2D3142), fontSize: 18, fontWeight: FontWeight.bold),
         ),
       ),
       home: const MultiCardScreen(),
@@ -53,116 +55,83 @@ class MyApp extends StatelessWidget {
 }
 
 // ============================================================================
-// 2. 데이터 모델 (Hive DB 스토리지 엔티티)
+// 3. 데이터 모델 클래스 (Hive Box 연동용 고유 데코레이터 포함)
 // ============================================================================
-
-// [지출 내역 모델]
 @HiveType(typeId: 0)
-class Expense {
+class Expense extends HiveObject {
   @HiveField(0)
   final int amount;
-  
   @HiveField(1)
   final DateTime date;
-
   @HiveField(2)
-  final int? installmentMonths; 
-
+  final int? installmentMonths;
   @HiveField(3)
-  final bool isInstallment; 
-
+  final bool isInstallment;
   @HiveField(4)
-  String? memo; 
+  final String? memo;
 
   Expense({
-    required this.amount, 
-    required this.date, 
-    this.installmentMonths, 
+    required this.amount,
+    required this.date,
+    this.installmentMonths,
     this.isInstallment = false,
     this.memo,
   });
 
-  static const _weekdays = ['월', '화', '수', '목', '금', '토', '일'];
-
-  String get formattedDate {
-    return '${date.month}.${date.day} ${_weekdays[date.weekday - 1]}';
-  }
+  String get formattedDate => '${date.month}.${date.day.toString().padLeft(2, '0')}';
 }
 
-// [카드 정보 및 실적/청구액 계산 모델]
 @HiveType(typeId: 1)
-class CardData {
+class CardData extends HiveObject {
   @HiveField(0)
-  String name; 
-  
+  final String name;
   @HiveField(1)
-  final String logoPath;
-  
+  final int total; // -1 이면 실적제외(단순합산용)카드
   @HiveField(2)
-  int total; 
-  
-  @HiveField(3)
-  List<Expense> expenses;
-
-  @HiveField(4)
-  String? description; 
+  final List<Expense> expenses;
 
   CardData({
-    required this.name, 
-    required this.logoPath,
+    required this.name,
     required this.total,
-    List<Expense>? expenses,
-    this.description,
-  }) : expenses = expenses ?? [];
+    required this.expenses,
+  });
 
   int getSpent(bool isPerformanceMode, {DateTime? targetDate}) {
     final target = targetDate ?? DateTime.now();
-
-    return expenses.fold(0, (sum, item) {
+    int spent = 0;
+    for (var expense in expenses) {
       if (isPerformanceMode) {
-        if (item.isInstallment && item.installmentMonths == null) {
-          return sum; 
+        if (expense.isInstallment && expense.installmentMonths == null) {
+          continue;
         }
-        if (item.date.year == target.year && item.date.month == target.month) {
-          return sum + item.amount; 
+        if (expense.date.year == target.year && expense.date.month == target.month) {
+          spent += expense.amount;
         }
-        return sum;
       } else {
-        if (item.isInstallment) {
-          if (item.installmentMonths == null) {
-            if (item.date.year == target.year && item.date.month == target.month) {
-              return sum + item.amount;
+        if (expense.isInstallment) {
+          if (expense.installmentMonths == null) {
+            if (expense.date.year == target.year && expense.date.month == target.month) {
+              spent += expense.amount;
             }
           } else {
-            int monthsPassed = (target.year - item.date.year) * 12 + (target.month - item.date.month);
-            if (monthsPassed >= 0 && monthsPassed < item.installmentMonths!) {
-              return sum + (item.amount ~/ item.installmentMonths!);
+            int monthsPassed = (target.year - expense.date.year) * 12 + (target.month - expense.date.month);
+            if (monthsPassed >= 0 && monthsPassed < expense.installmentMonths!) {
+              spent += expense.amount ~/ expense.installmentMonths!;
             }
           }
         } else {
-          if (item.date.year == target.year && item.date.month == target.month) {
-            return sum + item.amount;
+          if (expense.date.year == target.year && expense.date.month == target.month) {
+            spent += expense.amount;
           }
         }
-        return sum;
       }
-    });
-  }
-
-  bool isOverBudget(int currentSpent) {
-    if (total == -1) return false;
-    return currentSpent > total;
-  }
-      
-  double getSpentPercent(int currentSpent) {
-    if (total == -1) return 0.0;
-    if (total == 0) return currentSpent > 0 ? 1.0 : 0.0;
-    return (currentSpent / total).clamp(0.0, 1.0);
+    }
+    return spent;
   }
 }
 
 // ============================================================================
-// 4. 메인 화면 (다중 카드 및 지출 관리 화면)
+// 4. 상태 관리 화면 컴포넌트
 // ============================================================================
 class MultiCardScreen extends StatefulWidget {
   const MultiCardScreen({super.key});
@@ -172,17 +141,11 @@ class MultiCardScreen extends StatefulWidget {
 }
 
 class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingObserver {
-
-  // --------------------------------------------------------------------------
-  // 3-1. 상태 변수 및 생명주기 관리 (Lifecycle & Variables)
-  // --------------------------------------------------------------------------
   late Box<CardData> cardBox;
   late Box settingsBox;
-  late List<CardData> cards;
-
-  final FocusNode _amountFocusNode = FocusNode();
-  bool _isExpenseModalOpen = false;
+  List<CardData> cards = [];
   bool _isPerformanceMode = false;
+  bool _isExpenseModalOpen = false;
 
   @override
   void initState() {
@@ -195,48 +158,37 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
 
     if (cardBox.isEmpty) {
       cardBox.addAll([
-        CardData(name: '롯데카드', logoPath: 'assets/images/lotte.png', total: 300000, expenses: []),
-        CardData(name: '국민카드', logoPath: 'assets/images/kb.png', total: 300000, expenses: []),
-        CardData(name: '하나카드', logoPath: 'assets/images/hana.png', total: 300000, expenses: []),
-        CardData(name: '신한카드', logoPath: 'assets/images/shinhan.png', total: 1000000, expenses: []),
-        CardData(name: '삼성카드', logoPath: 'assets/images/samsung.png', total: 300000, expenses: []),
-        CardData(name: '우리카드', logoPath: 'assets/images/woori.png', total: 300000, expenses: []),
+        CardData(name: '신한카드', total: 300000, expenses: []),
+        CardData(name: '국민카드', total: 300000, expenses: []),
+        CardData(name: '삼성카드', total: -1, expenses: []),
+        CardData(name: '현대카드', total: 500000, expenses: []),
       ]);
     }
-
     cards = cardBox.values.toList();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _amountFocusNode.dispose();
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && !_isExpenseModalOpen) {
+      setState(() {});
+    }
   }
 
-  // --------------------------------------------------------------------------
-  // 3-2. 공통 유틸리티 (포맷팅 등)
-  // --------------------------------------------------------------------------
   String _formatCurrency(int amount) {
-    return amount.toString().replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (m) => '${m[1]},',
-    );
+    return amount.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},');
   }
 
-  // ============================================================================
-  // 4. 모달 및 팝업창 관리 (Dialogs & BottomSheets)
-  // ============================================================================
-
-  // [카드 예산 및 메모 설정 다이얼로그]
+  // [개별 카드 이름 및 목표 실적 수정 팝업 창]
   void _showEditCardDialog(BuildContext context, CardData card, StateSetter updateParentModal) {
-    final TextEditingController budgetController = TextEditingController(text: card.total == -1 ? '' : card.total.toString());
-    final TextEditingController descController = TextEditingController(text: card.description ?? '');
-    bool isNoLimit = card.total == -1;
+    final nameController = TextEditingController(text: card.name);
+    final totalController = TextEditingController(text: card.total == -1 ? '' : card.total.toString());
+    bool isPerformanceExcluded = card.total == -1;
 
     showDialog(
       context: context,
@@ -245,86 +197,52 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
           builder: (context, setDialogState) {
             return AlertDialog(
               backgroundColor: const Color(0xFFE0E5EC),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-              title: Text('${card.name} 설정', style: const TextStyle(color: Color(0xFF2D3142), fontWeight: FontWeight.bold, fontSize: 18)),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('예산 설정', style: TextStyle(color: Color(0xFF9098B1), fontSize: 13, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: budgetController,
-                            enabled: !isNoLimit,
-                            keyboardType: TextInputType.number,
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: isNoLimit ? const Color(0xFF9098B1) : const Color(0xFF2D3142), 
-                              fontWeight: FontWeight.bold
-                            ),
-                            decoration: InputDecoration(
-                              hintText: isNoLimit ? '한도 없는 카드' : '예산 금액 입력',
-                              hintStyle: const TextStyle(color: Color(0xFF9098B1), fontSize: 14),
-                              filled: true,
-                              fillColor: isNoLimit ? const Color(0xFFD1D9E6).withOpacity(0.5) : const Color(0xFFD1D9E6),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        
-                        GestureDetector(
-                          onTap: () {
-                            setDialogState(() {
-                              isNoLimit = !isNoLimit;
-                              if (isNoLimit) budgetController.clear();
-                            });
-                          },
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 150),
-                            height: 38,
-                            padding: const EdgeInsets.symmetric(horizontal: 14),
-                            alignment: Alignment.center,
-                            decoration: isNoLimit
-                                ? BoxDecoration(
-                                    color: const Color(0xFFE0E5EC),
-                                    borderRadius: BorderRadius.circular(12),
-                                    boxShadow: [
-                                      const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 3),
-                                      BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.4), offset: const Offset(2, 2), blurRadius: 3),
-                                    ],
-                                  )
-                                : BoxDecoration(
-                                    color: const Color(0xFFD1D9E6),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                            child: Text(
-                              '한도 없음',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: isNoLimit ? const Color(0xFF2F60FF) : const Color(0xFF9098B1),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: const Text('카드 수정', style: TextStyle(color: Color(0xFF2D3142), fontWeight: FontWeight.bold)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('카드 이름', style: TextStyle(color: Color(0xFF9098B1), fontSize: 13, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: nameController,
+                    style: const TextStyle(fontSize: 16, color: Color(0xFF2D3142), fontWeight: FontWeight.bold),
+                    decoration: InputDecoration(
+                      filled: true,
+                      fillColor: const Color(0xFFD1D9E6),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     ),
-                    const SizedBox(height: 24),
-                    const Text('카드 설명 (메모)', style: TextStyle(color: Color(0xFF9098B1), fontSize: 13, fontWeight: FontWeight.bold)),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('실적 제외 카드', style: TextStyle(color: Color(0xFF2D3142), fontSize: 14, fontWeight: FontWeight.bold)),
+                      Switch(
+                        value: isPerformanceExcluded,
+                        activeColor: const Color(0xFF2F60FF),
+                        onChanged: (val) {
+                          setDialogState(() {
+                            isPerformanceExcluded = val;
+                            if (isPerformanceExcluded) {
+                              totalController.clear();
+                            }
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                  if (!isPerformanceExcluded) ...[
+                    const SizedBox(height: 8),
+                    const Text('목표 실적 (원)', style: TextStyle(color: Color(0xFF9098B1), fontSize: 13, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
                     TextField(
-                      controller: descController,
-                      maxLines: 1,
+                      controller: totalController,
+                      keyboardType: TextInputType.number,
                       style: const TextStyle(fontSize: 16, color: Color(0xFF2D3142), fontWeight: FontWeight.bold),
                       decoration: InputDecoration(
-                        hintText: '예: 관리비, 통신비, 정수기',
-                        hintStyle: const TextStyle(color: Color(0xFF9098B1), fontSize: 14),
                         filled: true,
                         fillColor: const Color(0xFFD1D9E6),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
@@ -332,7 +250,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                       ),
                     ),
                   ],
-                ),
+                ],
               ),
               actions: [
                 TextButton(
@@ -342,15 +260,23 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                 TextButton(
                   onPressed: () {
                     setState(() {
-                      card.total = isNoLimit ? -1 : (int.tryParse(budgetController.text.replaceAll(',', '')) ?? 0);
-                      card.description = descController.text.trim();
+                      final newName = nameController.text.trim();
+                      final int newTotal = isPerformanceExcluded ? -1 : (int.tryParse(totalController.text) ?? 0);
+                      
+                      final updatedCard = CardData(
+                        name: newName.isNotEmpty ? newName : card.name,
+                        total: newTotal,
+                        expenses: card.expenses,
+                      );
+                      
                       int idx = cards.indexOf(card);
-                      cardBox.putAt(idx, card);
+                      cards[idx] = updatedCard;
+                      cardBox.putAt(idx, updatedCard);
+                      updateParentModal(() {});
+                      Navigator.pop(context);
                     });
-                    updateParentModal(() {});
-                    Navigator.pop(context);
                   },
-                  child: const Text('확인', style: TextStyle(color: Color(0xFF2F60FF), fontWeight: FontWeight.bold)),
+                  child: const Text('저장', style: TextStyle(color: Color(0xFF2F60FF), fontWeight: FontWeight.bold)),
                 ),
               ],
             );
@@ -360,41 +286,37 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
     );
   }
 
-  // [개별 지출 내역 메모 수정 다이얼로그]
+  // [개별 지출 정보 및 설명 메모 수정 다이얼로그]
   void _showExpenseMemoDialog(BuildContext context, CardData card, Expense expense, StateSetter updateParentModal) {
-    // 금액과 메모를 위한 컨트롤러 생성
-    final TextEditingController amountController = TextEditingController(text: expense.amount.toString());
-    final TextEditingController memoController = TextEditingController(text: expense.memo ?? '');
+    final amountController = TextEditingController(text: _formatCurrency(expense.amount));
+    final memoController = TextEditingController(text: expense.memo ?? '');
 
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
           backgroundColor: const Color(0xFFE0E5EC),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          title: const Text('지출 수정', style: TextStyle(color: Color(0xFF2D3142), fontWeight: FontWeight.bold, fontSize: 18)),
-          content: SingleChildScrollView( 
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('지출 내역 수정', style: TextStyle(color: Color(0xFF2D3142), fontWeight: FontWeight.bold)),
+          content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start, 
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('소비 금액', style: TextStyle(color: Color(0xFF9098B1), fontSize: 13, fontWeight: FontWeight.bold)),
+                const Text('지출 금액 (원)', style: TextStyle(color: Color(0xFF9098B1), fontSize: 13, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 TextField(
                   controller: amountController,
                   keyboardType: TextInputType.number,
                   style: const TextStyle(fontSize: 16, color: Color(0xFF2D3142), fontWeight: FontWeight.bold),
                   decoration: InputDecoration(
-                    hintText: '금액 입력',
-                    hintStyle: const TextStyle(color: Color(0xFF9098B1), fontSize: 14),
                     filled: true,
                     fillColor: const Color(0xFFD1D9E6),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), 
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   ),
                 ),
                 const SizedBox(height: 24),
-                
                 const Text('지출 설명 (메모)', style: TextStyle(color: Color(0xFF9098B1), fontSize: 13, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 TextField(
@@ -407,7 +329,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                     filled: true,
                     fillColor: const Color(0xFFD1D9E6),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), 
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   ),
                 ),
               ],
@@ -423,7 +345,6 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                 setState(() {
                   final input = amountController.text.replaceAll(',', '');
                   final parsedAmount = int.tryParse(input);
-                  
                   if (parsedAmount != null && parsedAmount > 0) {
                     final updatedExpense = Expense(
                       amount: parsedAmount,
@@ -432,13 +353,10 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                       isInstallment: expense.isInstallment,
                       memo: memoController.text.trim(),
                     );
-                    
                     int expenseIdx = card.expenses.indexOf(expense);
                     card.expenses[expenseIdx] = updatedExpense;
-                    
                     int cardIdx = cards.indexOf(card);
                     cardBox.putAt(cardIdx, card);
-                    
                     updateParentModal(() {});
                     Navigator.pop(context);
                   } else {
@@ -460,29 +378,27 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
   void _showAddExpenseModal(BuildContext context, {int initialCardIndex = 0}) {
     _isExpenseModalOpen = true;
     int selectedCardIndex = initialCardIndex;
-    bool isExpanded = initialCardIndex >= 4; 
-    
-    bool isInstallmentActive = false; 
-    bool showInstallmentPicker = false; 
-    int? selectedInstallment; 
-
-    // 인라인 달력 관련 상태
-    bool showCalendar = false;
     DateTime selectedDate = DateTime.now();
     DateTime currentMonthView = DateTime(selectedDate.year, selectedDate.month, 1);
+    bool showCalendar = false;
+    bool isInstallmentActive = false;
+    int? selectedInstallment;
+    bool showInstallmentPicker = false;
+    bool isExpanded = false;
 
-    final TextEditingController amountController = TextEditingController();
+    final amountController = TextEditingController();
+    final _amountFocusNode = FocusNode();
 
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true, 
+      isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setModalState) {
             return Padding(
               padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).padding.bottom, 
+                bottom: MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).padding.bottom,
               ),
               child: Container(
                 padding: const EdgeInsets.all(24),
@@ -501,15 +417,13 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                           child: Container(
                             width: 48,
                             height: 5,
-                            margin: const EdgeInsets.only(bottom: 24), 
+                            margin: const EdgeInsets.only(bottom: 24),
                             decoration: BoxDecoration(
-                              color: Colors.grey.withOpacity(0.5), 
+                              color: Colors.grey.withOpacity(0.5),
                               borderRadius: BorderRadius.circular(999),
                             ),
                           ),
                         ),
-                        
-                        // 타이틀 및 날짜 선택 버튼
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
@@ -519,14 +433,12 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                             ),
                             Builder(
                               builder: (context) {
-                                // '오늘'인지 확인
                                 final isToday = selectedDate.year == DateTime.now().year &&
-                                                selectedDate.month == DateTime.now().month &&
-                                                selectedDate.day == DateTime.now().day;
-
+                                    selectedDate.month == DateTime.now().month &&
+                                    selectedDate.day == DateTime.now().day;
                                 return GestureDetector(
                                   onTap: () {
-                                    FocusScope.of(context).unfocus(); 
+                                    FocusScope.of(context).unfocus();
                                     setModalState(() {
                                       showCalendar = !showCalendar;
                                       if (showCalendar) {
@@ -542,12 +454,12 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                                     decoration: BoxDecoration(
                                       color: const Color(0xFFE0E5EC),
                                       borderRadius: BorderRadius.circular(12),
-                                      boxShadow: isToday 
-                                          ? [ // 오늘일 때 (오목한 효과 - 청구액 보기와 동일하게 Offset 반전)
+                                      boxShadow: isToday
+                                          ? [
                                               const BoxShadow(color: Colors.white, offset: Offset(2, 2), blurRadius: 4),
                                               BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(-2, -2), blurRadius: 4),
                                             ]
-                                          : [ // 다른 날짜일 때 (볼록한 효과)
+                                          : [
                                               const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 4),
                                               BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 4),
                                             ],
@@ -555,8 +467,8 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                                     child: Text(
                                       isToday ? '오늘' : '${selectedDate.month}월 ${selectedDate.day}일',
                                       style: TextStyle(
-                                        fontSize: 13, 
-                                        fontWeight: FontWeight.bold, 
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold,
                                         color: isToday ? const Color(0xFF9098B1) : const Color(0xFF2F60FF),
                                       ),
                                     ),
@@ -566,12 +478,11 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                             ),
                           ],
                         ),
-
                         // [인라인 달력 영역]
                         if (showCalendar) ...[
                           const SizedBox(height: 16),
                           Container(
-                            padding: const EdgeInsets.all(16),
+                            padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
                               color: const Color(0xFFE0E5EC),
                               borderRadius: BorderRadius.circular(16),
@@ -581,7 +492,6 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                               ],
                             ),
                             child: Column(
-                              mainAxisSize: MainAxisSize.min,
                               children: [
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -592,7 +502,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                                     ),
                                     Text(
                                       '${currentMonthView.year}년 ${currentMonthView.month}월',
-                                      style: const TextStyle(color: Color(0xFF2D3142), fontWeight: FontWeight.bold, fontSize: 15),
+                                      style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
                                     ),
                                     GestureDetector(
                                       onTap: () => setModalState(() => currentMonthView = DateTime(currentMonthView.year, currentMonthView.month + 1, 1)),
@@ -600,89 +510,70 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 16),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                                  children: const [
-                                    Text('일', style: TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.bold)),
-                                    Text('월', style: TextStyle(color: Color(0xFF9098B1), fontSize: 12)),
-                                    Text('화', style: TextStyle(color: Color(0xFF9098B1), fontSize: 12)),
-                                    Text('수', style: TextStyle(color: Color(0xFF9098B1), fontSize: 12)),
-                                    Text('목', style: TextStyle(color: Color(0xFF9098B1), fontSize: 12)),
-                                    Text('금', style: TextStyle(color: Color(0xFF9098B1), fontSize: 12)),
-                                    Text('토', style: TextStyle(color: Color(0xFF2F60FF), fontSize: 12, fontWeight: FontWeight.bold)),
-                                  ],
-                                ),
                                 const SizedBox(height: 12),
-                                Builder(
-                                  builder: (context) {
-                                    final daysInMonth = DateTime(currentMonthView.year, currentMonthView.month + 1, 0).day;
-                                    final firstWeekday = DateTime(currentMonthView.year, currentMonthView.month, 1).weekday; 
-                                    int blankSpaces = firstWeekday == 7 ? 0 : firstWeekday;
+                                Builder(builder: (context) {
+                                  final daysInMonth = DateTime(currentMonthView.year, currentMonthView.month + 1, 0).day;
+                                  final firstWeekday = DateTime(currentMonthView.year, currentMonthView.month, 1).weekday;
+                                  int blankSpaces = firstWeekday == 7 ? 0 : firstWeekday;
 
-                                    return GridView.builder(
-                                      shrinkWrap: true,
-                                      physics: const NeverScrollableScrollPhysics(),
-                                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                                        crossAxisCount: 7,
-                                        mainAxisSpacing: 8,
-                                        crossAxisSpacing: 8,
-                                      ),
-                                      itemCount: blankSpaces + daysInMonth,
-                                      itemBuilder: (context, index) {
-                                        if (index < blankSpaces) return const SizedBox.shrink();
-                                        
-                                        final day = index - blankSpaces + 1;
-                                        final isSelected = currentMonthView.year == selectedDate.year &&
-                                                           currentMonthView.month == selectedDate.month &&
-                                                           day == selectedDate.day;
+                                  return GridView.builder(
+                                    shrinkWrap: true,
+                                    physics: const NeverScrollableScrollPhysics(),
+                                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: 7,
+                                      mainAxisSpacing: 8,
+                                      crossAxisSpacing: 8,
+                                    ),
+                                    itemCount: blankSpaces + daysInMonth,
+                                    itemBuilder: (context, index) {
+                                      if (index < blankSpaces) return const SizedBox.shrink();
 
-                                        return GestureDetector(
-                                          onTap: () {
-                                            setModalState(() {
-                                              selectedDate = DateTime(currentMonthView.year, currentMonthView.month, day);
-                                              showCalendar = false; // 날짜 선택 시 달력 닫기
-                                            });
-                                          },
-                                          child: Container(
-                                            alignment: Alignment.center,
-                                            decoration: isSelected
-                                                ? BoxDecoration(
-                                                    color: const Color(0xFFE0E5EC),
-                                                    shape: BoxShape.circle,
-                                                    boxShadow: [
-                                                      const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 4),
-                                                      BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 4),
-                                                    ],
-                                                  )
-                                                : const BoxDecoration(shape: BoxShape.circle, color: Colors.transparent),
-                                            child: Text(
-                                              '$day',
-                                              style: TextStyle(
-                                                fontSize: 13,
-                                                fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                                                color: isSelected ? const Color(0xFF2F60FF) : const Color(0xFF2D3142),
-                                              ),
+                                      final day = index - blankSpaces + 1;
+                                      final isSelected = currentMonthView.year == selectedDate.year &&
+                                          currentMonthView.month == selectedDate.month &&
+                                          day == selectedDate.day;
+                                      return GestureDetector(
+                                        onTap: () {
+                                          setModalState(() {
+                                            selectedDate = DateTime(currentMonthView.year, currentMonthView.month, day);
+                                            showCalendar = false;
+                                          });
+                                        },
+                                        child: Container(
+                                          alignment: Alignment.center,
+                                          decoration: isSelected
+                                              ? BoxDecoration(
+                                                  color: const Color(0xFFE0E5EC),
+                                                  shape: BoxShape.circle,
+                                                  boxShadow: [
+                                                    const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 4),
+                                                    BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 4),
+                                                  ],
+                                                )
+                                              : const BoxDecoration(shape: BoxShape.circle, color: Colors.transparent),
+                                          child: Text(
+                                            '$day',
+                                            style: TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                                              color: isSelected ? const Color(0xFF2F60FF) : const Color(0xFF2D3142),
                                             ),
                                           ),
-                                        );
-                                      },
-                                    );
-                                  }
-                                ),
+                                        ),
+                                      );
+                                    },
+                                  );
+                                }),
                               ],
                             ),
                           ),
                         ],
-                        // [인라인 달력 영역 끝]
-
                         const SizedBox(height: 24),
-                        
                         Container(
                           height: 50,
                           padding: const EdgeInsets.all(6),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFD1D9E6), 
+                            color: const Color(0xFFD1D9E6),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Row(
@@ -705,7 +596,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                                           : const BoxDecoration(color: Colors.transparent),
                                       alignment: Alignment.center,
                                       child: Text(
-                                        cards[index].name.substring(0, 2), 
+                                        cards[index].name.substring(0, 2),
                                         style: TextStyle(
                                           fontSize: 14,
                                           fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
@@ -724,12 +615,8 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                                       decoration: const BoxDecoration(color: Colors.transparent),
                                       alignment: Alignment.center,
                                       child: const Text(
-                                        '+', 
-                                        style: TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.bold,
-                                          color: Color(0xFF9098B1),
-                                        ),
+                                        '+',
+                                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF9098B1)),
                                       ),
                                     ),
                                   ),
@@ -737,9 +624,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                             ],
                           ),
                         ),
-                        
                         const SizedBox(height: 32),
-                        
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
@@ -756,9 +641,9 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                                 });
                               },
                               child: Container(
-                                width: 60, 
+                                width: 60,
                                 height: 38,
-                                margin: const EdgeInsets.only(left: 8), 
+                                margin: const EdgeInsets.only(left: 8),
                                 alignment: Alignment.center,
                                 decoration: isInstallmentActive
                                     ? BoxDecoration(
@@ -789,7 +674,6 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                                 ),
                               ),
                             ),
-                            
                             if (isInstallmentActive) ...[
                               const SizedBox(width: 12),
                               GestureDetector(
@@ -826,51 +710,31 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                                 ),
                               ),
                             ],
-                            
                             const SizedBox(width: 12),
-                            
                             Expanded(
                               child: TextField(
                                 controller: amountController,
                                 focusNode: _amountFocusNode,
                                 keyboardType: TextInputType.number,
-                                style: const TextStyle(
-                                  fontSize: 16, 
-                                  color: Color(0xFF2D3142), 
-                                  fontWeight: FontWeight.bold,
-                                ),
+                                style: const TextStyle(fontSize: 16, color: Color(0xFF2D3142), fontWeight: FontWeight.bold),
                                 decoration: const InputDecoration(
                                   hintText: '소비 금액',
-                                  hintStyle: TextStyle(
-                                    fontSize: 16, 
-                                    color: Color(0xFF9098B1), 
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                                  hintStyle: TextStyle(fontSize: 16, color: Color(0xFF9098B1), fontWeight: FontWeight.w600),
                                   isDense: true,
                                   contentPadding: EdgeInsets.only(bottom: 6),
-                                  enabledBorder: UnderlineInputBorder(
-                                    borderSide: BorderSide(color: Color(0xFFD1D9E6), width: 1),
-                                  ),
-                                  focusedBorder: UnderlineInputBorder(
-                                    borderSide: BorderSide(color: Color(0xFF2F60FF), width: 1),
-                                  ),
+                                  enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFFD1D9E6), width: 1)),
+                                  focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF2F60FF), width: 1)),
                                 ),
                               ),
                             ),
                             const SizedBox(width: 8),
                             const Text(
                               '원',
-                              style: TextStyle(
-                                fontSize: 16, 
-                                color: Color(0xFF2D3142), 
-                                fontWeight: FontWeight.bold,
-                              ),
+                              style: TextStyle(fontSize: 16, color: Color(0xFF2D3142), fontWeight: FontWeight.bold),
                             ),
                           ],
                         ),
-                        
                         const SizedBox(height: 40),
-                        
                         GestureDetector(
                           onTap: () {
                             if (amountController.text.isNotEmpty) {
@@ -878,17 +742,17 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                               if (amount > 0) {
                                 setState(() {
                                   cards[selectedCardIndex].expenses.insert(
-                                    0, 
+                                    0,
                                     Expense(
-                                      amount: amount, 
+                                      amount: amount,
                                       date: selectedDate,
                                       installmentMonths: selectedInstallment,
                                       isInstallment: isInstallmentActive,
-                                    )
+                                    ),
                                   );
                                   cardBox.putAt(selectedCardIndex, cards[selectedCardIndex]);
                                 });
-                                Navigator.pop(context); 
+                                Navigator.pop(context);
                               }
                             }
                           },
@@ -898,53 +762,40 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(16),
                               gradient: const LinearGradient(
-                                colors: [
-                                  Color(0xFF4A7DFF), 
-                                  Color(0xFF1A4BFF), 
-                                ],
+                                colors: [Color(0xFF4A7DFF), Color(0xFF1A4BFF)],
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
                               ),
                               boxShadow: [
                                 BoxShadow(
                                   color: const Color(0xFF2F60FF).withOpacity(0.4),
-                                  offset: const Offset(4, 6),
-                                  blurRadius: 12,
-                                ),
-                                const BoxShadow(
-                                  color: Colors.white,
-                                  offset: Offset(-4, -4),
+                                  offset: const Offset(0, 4),
                                   blurRadius: 8,
                                 ),
                               ],
                             ),
                             alignment: Alignment.center,
                             child: const Text(
-                              '확인',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
+                              '추가',
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
                             ),
                           ),
                         ),
                       ],
                     ),
-
                     if (showInstallmentPicker)
                       Positioned(
-                        bottom: 130, 
-                        left: 80,   
+                        left: 76,
+                        bottom: 90,
                         child: Container(
-                          height: 115, 
-                          width: 80,   
+                          width: 90,
+                          height: 150,
                           decoration: BoxDecoration(
-                            color: const Color(0xFFD1D9E6),
+                            color: const Color(0xFFE0E5EC),
                             borderRadius: BorderRadius.circular(12),
                             boxShadow: [
                               BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(4, 4), blurRadius: 8),
-                              const BoxShadow(color: Colors.white, offset: Offset(-4, -4), blurRadius: 8)
+                              const BoxShadow(color: Colors.white, offset: Offset(-4, -4), blurRadius: 8),
                             ],
                           ),
                           child: ListView.builder(
@@ -957,7 +808,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                                 onTap: () {
                                   setModalState(() {
                                     selectedInstallment = month;
-                                    showInstallmentPicker = false; 
+                                    showInstallmentPicker = false;
                                   });
                                 },
                                 child: Container(
@@ -1004,13 +855,11 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
         return StatefulBuilder(
           builder: (context, setModalState) {
             return Container(
-              height: MediaQuery.of(context).size.height * 0.7, 
+              height: MediaQuery.of(context).size.height * 0.7,
               padding: const EdgeInsets.all(24),
               decoration: const BoxDecoration(
                 color: Color(0xFFE0E5EC),
-                borderRadius: BorderRadius.vertical(
-                  top: Radius.circular(32),
-                ),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1019,14 +868,10 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                     child: Container(
                       width: 48,
                       height: 5,
-                      decoration: BoxDecoration(
-                        color: Colors.grey,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
+                      decoration: BoxDecoration(color: Colors.grey, borderRadius: BorderRadius.circular(999)),
                     ),
                   ),
                   const SizedBox(height: 24),
-                  
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -1034,27 +879,19 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                         children: [
                           Text(
                             card.name,
-                            style: const TextStyle(
-                              color: Color(0xFF2D3142),
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
+                            style: const TextStyle(color: Color(0xFF2D3142), fontSize: 20, fontWeight: FontWeight.bold),
                           ),
                           const SizedBox(width: 6),
                           GestureDetector(
                             onTap: () => _showEditCardDialog(context, card, setModalState),
-                            child: const Icon(
-                              Icons.edit,
-                              size: 16,
-                              color: Color(0xFF9098B1),
-                            ),
+                            child: const Icon(Icons.edit, size: 16, color: Color(0xFF9098B1)),
                           ),
                         ],
                       ),
                       GestureDetector(
                         onTap: () {
-                          Navigator.pop(context); 
-                          _showAddExpenseModal(context, initialCardIndex: cards.indexOf(card)); 
+                          Navigator.pop(context);
+                          _showAddExpenseModal(context, initialCardIndex: cards.indexOf(card));
                         },
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -1067,42 +904,28 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                             ],
                           ),
                           child: const Text(
-                            '+',
-                            style: TextStyle(
-                              fontSize: 18, 
-                              color: Color(0xFF2D3142), 
-                              fontWeight: FontWeight.bold
-                            ),
+                            '지출 추가',
+                            style: TextStyle(color: Color(0xFF2F60FF), fontSize: 12, fontWeight: FontWeight.bold),
                           ),
                         ),
                       ),
                     ],
                   ),
-                  
-                  if (card.description != null && card.description!.isNotEmpty) ...[
-                    const SizedBox(height: 0.5),
-                    Text(
-                      card.description!,
-                      style: const TextStyle(
-                        color: Color(0xFF9098B1),
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
-                  
                   const SizedBox(height: 24),
-
                   Builder(
                     builder: (context) {
                       final target = targetDate ?? DateTime.now();
                       final filteredExpenses = card.expenses.where((expense) {
                         if (_isPerformanceMode) {
-                          if (expense.date.year == target.year && expense.date.month == target.month) {
-                            return !(expense.isInstallment && expense.installmentMonths == null);
+                          if (expense.isInstallment && expense.installmentMonths == null) {
+                            return false;
                           }
-                          return false;
+                          return expense.date.year == target.year && expense.date.month == target.month;
                         } else {
-                          if (expense.isInstallment && expense.installmentMonths != null) {
+                          if (expense.isInstallment) {
+                            if (expense.installmentMonths == null) {
+                              return expense.date.year == target.year && expense.date.month == target.month;
+                            }
                             int monthsPassed = (target.year - expense.date.year) * 12 + (target.month - expense.date.month);
                             return monthsPassed >= 0 && monthsPassed < expense.installmentMonths!;
                           } else {
@@ -1116,38 +939,32 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                             ? const Center(
                                 child: Text(
                                   '이번 달 지출 내역이 없습니다.',
-                                  style: TextStyle(
-                                    color: Color(0xFF9098B1),
-                                    fontSize: 16,
-                                  ),
+                                  style: TextStyle(color: Color(0xFF9098B1), fontSize: 16),
                                 ),
                               )
                             : ListView.builder(
                                 itemCount: filteredExpenses.length,
                                 itemBuilder: (_, index) {
                                   final expense = filteredExpenses[index];
-
                                   int displayedAmount = expense.amount;
                                   if (!_isPerformanceMode) {
                                     if (expense.isInstallment && expense.installmentMonths != null) {
                                       displayedAmount = expense.amount ~/ expense.installmentMonths!;
                                     }
                                   }
-
                                   Color circleColor = const Color(0xFF2F60FF);
                                   if (expense.isInstallment && expense.installmentMonths == null) {
-                                    circleColor = const Color(0xFF00BFA5); 
+                                    circleColor = const Color(0xFF00BFA5);
                                   }
-
                                   return Padding(
                                     padding: const EdgeInsets.only(bottom: 20),
                                     child: Row(
-                                      crossAxisAlignment: CrossAxisAlignment.center, 
+                                      crossAxisAlignment: CrossAxisAlignment.center,
                                       children: [
                                         Expanded(
                                           child: GestureDetector(
                                             onTap: () => _showExpenseMemoDialog(context, card, expense, setModalState),
-                                            behavior: HitTestBehavior.opaque, 
+                                            behavior: HitTestBehavior.opaque,
                                             child: Row(
                                               crossAxisAlignment: CrossAxisAlignment.center,
                                               children: [
@@ -1155,10 +972,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                                                   width: 60,
                                                   child: Text(
                                                     expense.formattedDate,
-                                                    style: const TextStyle(
-                                                      color: Color(0xFF9098B1),
-                                                      fontSize: 14,
-                                                    ),
+                                                    style: const TextStyle(color: Color(0xFF9098B1), fontSize: 14),
                                                   ),
                                                 ),
                                                 const SizedBox(width: 16),
@@ -1175,30 +989,19 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                                                             Container(
                                                               width: 6,
                                                               height: 6,
-                                                              decoration: BoxDecoration(
-                                                                color: circleColor,
-                                                                shape: BoxShape.circle,
-                                                               ),
+                                                              decoration: BoxDecoration(color: circleColor, shape: BoxShape.circle),
                                                             ),
                                                             const SizedBox(width: 6),
                                                           ],
                                                           Text(
                                                             '${_formatCurrency(displayedAmount)}원',
-                                                            style: const TextStyle(
-                                                              color: Color(0xFF2D3142),
-                                                              fontSize: 16,
-                                                              fontWeight: FontWeight.bold,
-                                                            ),
+                                                            style: const TextStyle(color: Color(0xFF2D3142), fontSize: 16, fontWeight: FontWeight.bold),
                                                           ),
                                                           if (_isPerformanceMode && expense.isInstallment && expense.installmentMonths != null) ...[
                                                             const SizedBox(width: 4),
                                                             Text(
                                                               '/${expense.installmentMonths}개월',
-                                                              style: const TextStyle(
-                                                                color: Color(0xFF9098B1),
-                                                                fontSize: 12,
-                                                                fontWeight: FontWeight.normal,
-                                                              ),
+                                                              style: const TextStyle(color: Color(0xFF9098B1), fontSize: 12, fontWeight: FontWeight.normal),
                                                             ),
                                                           ],
                                                         ],
@@ -1207,10 +1010,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                                                         const SizedBox(height: 2),
                                                         Text(
                                                           expense.memo!,
-                                                          style: const TextStyle(
-                                                            color: Color(0xFF9098B1),
-                                                            fontSize: 12,
-                                                          ),
+                                                          style: const TextStyle(color: Color(0xFF9098B1), fontSize: 12),
                                                           textAlign: TextAlign.center,
                                                         ),
                                                       ],
@@ -1225,21 +1025,13 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                                         GestureDetector(
                                           onTap: () {
                                             setState(() {
-                                              card.expenses.remove(expense); 
-                                              int cardIndex = cards.indexOf(card);
-                                              cardBox.putAt(cardIndex, card);
+                                              card.expenses.remove(expense);
+                                              int cardIdx = cards.indexOf(card);
+                                              cardBox.putAt(cardIdx, card);
                                             });
-                                            setModalState(() {}); 
+                                            setModalState(() {});
                                           },
-                                          child: Container(
-                                            padding: const EdgeInsets.all(8),
-                                            color: Colors.transparent, 
-                                            child: const Icon(
-                                              Icons.close,
-                                              color: Colors.redAccent,
-                                              size: 20,
-                                            ),
-                                          ),
+                                          child: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
                                         ),
                                       ],
                                     ),
@@ -1247,7 +1039,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                                 },
                               ),
                       );
-                    }
+                    },
                   ),
                 ],
               ),
@@ -1258,7 +1050,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
     );
   }
 
-  // [전체 소비 요약 및 카드 순서 변경(드래그 앤 드롭) 바텀 시트]
+  // [전체 카드 소비 현황 및 정렬 변경 모달]
   void _showSummaryModal(BuildContext context) {
     DateTime selectedSummaryDate = DateTime.now();
 
@@ -1266,11 +1058,11 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) {
+      builder: (context) {
         return StatefulBuilder(
           builder: (context, setModalState) {
-            final totalSpent = cards.fold<int>(0, (sum, card) => sum + card.getSpent(_isPerformanceMode, targetDate: selectedSummaryDate));
-            final totalBudget = cards.fold<int>(0, (sum, card) => sum + (card.total == -1 ? 0 : card.total));
+            final int totalSpent = cards.fold<int>(0, (sum, card) => sum + card.getSpent(_isPerformanceMode, targetDate: selectedSummaryDate));
+            final int totalBudget = cards.fold<int>(0, (sum, card) => sum + (card.total == -1 ? 0 : card.total));
             final totalRemaining = cards.fold<int>(0, (sum, card) {
               if (card.total == -1) return sum;
               final spent = card.getSpent(_isPerformanceMode, targetDate: selectedSummaryDate);
@@ -1278,13 +1070,11 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
             });
 
             return Container(
-              height: MediaQuery.of(context).size.height * 0.8,
+              height: MediaQuery.of(context).size.height * 0.85,
               padding: const EdgeInsets.all(24),
               decoration: const BoxDecoration(
                 color: Color(0xFFE0E5EC),
-                borderRadius: BorderRadius.vertical(
-                  top: Radius.circular(32),
-                ),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1293,134 +1083,47 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                     child: Container(
                       width: 48,
                       height: 5,
-                      decoration: BoxDecoration(
-                        color: Colors.grey,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
+                      decoration: BoxDecoration(color: Colors.grey.withOpacity(0.5), borderRadius: BorderRadius.circular(999)),
                     ),
                   ),
                   const SizedBox(height: 24),
-                  
                   Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Expanded(
-                        child: Text(
-                          '요약',
-                          style: TextStyle(
-                            color: Color(0xFF2D3142),
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
+                      const Text('월별 요약 및 순서', style: TextStyle(color: Color(0xFF2D3142), fontSize: 20, fontWeight: FontWeight.bold)),
+                      Row(
+                        children: [
+                          GestureDetector(
+                            onTap: () => setModalState(() => selectedSummaryDate = DateTime(selectedSummaryDate.year, selectedSummaryDate.month - 1, 1)),
+                            child: const Icon(Icons.chevron_left, size: 24, color: Color(0xFF2D3142)),
                           ),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Align(
-                          alignment: Alignment.centerRight,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              GestureDetector(
-                                onTap: () {
-                                  setModalState(() {
-                                    selectedSummaryDate = DateTime(selectedSummaryDate.year, selectedSummaryDate.month - 1);
-                                  });
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFE0E5EC),
-                                    borderRadius: BorderRadius.circular(8),
-                                    boxShadow: [
-                                      const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 2),
-                                      BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 2),
-                                    ],
-                                  ),
-                                  child: const Icon(Icons.chevron_left, size: 18, color: Color(0xFF2D3142)),
-                                ),
-                              ),
-                              const SizedBox(width: 11),
-                              SizedBox(
-                                width: 75,
-                                child: FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: Text(
-                                    '${selectedSummaryDate.year}년 ${selectedSummaryDate.month}월',
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                      color: Color(0xFF2F60FF),
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 11),
-                              GestureDetector(
-                                onTap: () {
-                                  setModalState(() {
-                                    selectedSummaryDate = DateTime(selectedSummaryDate.year, selectedSummaryDate.month + 1);
-                                  });
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFE0E5EC),
-                                    borderRadius: BorderRadius.circular(8),
-                                    boxShadow: [
-                                      const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 2),
-                                      BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 2),
-                                    ],
-                                  ),
-                                  child: const Icon(Icons.chevron_right, size: 18, color: Color(0xFF2D3142)),
-                                ),
-                              ),
-                            ],
+                          const SizedBox(width: 8),
+                          Text(
+                            '${selectedSummaryDate.month}월',
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
                           ),
-                        ),
+                          const SizedBox(width: 8),
+                          GestureDetector(
+                            onTap: () => setModalState(() => selectedSummaryDate = DateTime(selectedSummaryDate.year, selectedSummaryDate.month + 1, 1)),
+                            child: const Icon(Icons.chevron_right, size: 24, color: Color(0xFF2D3142)),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-
-
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 32),
                   Row(
                     children: [
-                      Expanded(
-                        child: _summaryCard(
-                          '총 소비',
-                          '${_formatCurrency(totalSpent)}원',
-                          const Color(0xFF2D3142),
-                        ),
-                      ),
+                      Expanded(child: _buildSummaryItem('총 소비', '${_formatCurrency(totalSpent)}원', const Color(0xFF2F60FF))),
                       const SizedBox(width: 16),
-                      Expanded(
-                        child: _summaryCard(
-                        '남은 예산',
-                        '${_formatCurrency(totalRemaining)}원',
-                        const Color(0xFF2D3142),
-                      ),
-                      ),
+                      Expanded(child: _buildSummaryItem('남은 금액', '${_formatCurrency(totalRemaining)}원', totalRemaining >= 0 ? const Color(0xFF2F60FF) : Colors.redAccent)),
                     ],
                   ),
-                  const SizedBox(height: 40),
-                  const Text(
-                    '카드별 소비', 
-                    style: TextStyle(
-                      color: Color(0xFF9098B1),
-                      fontSize: 14,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 32),
+                  const Text('카드별 내역 (순서 변경 가능)', style: TextStyle(color: Color(0xFF9098B1), fontSize: 13, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 12),
                   Expanded(
                     child: ReorderableListView.builder(
-                      // [핵심 변경점] proxyDecorator를 사용하여 드래그 시 아이템의 기본 하얀 배경이 뜨지 않고 투명하게 유지되도록 처리
-                      proxyDecorator: (Widget child, int index, Animation<double> animation) {
-                        return Material(
-                          type: MaterialType.transparency,
-                          child: child,
-                        );
-                      },
                       itemCount: cards.length,
                       onReorder: (oldIndex, newIndex) {
                         if (newIndex > oldIndex) {
@@ -1438,76 +1141,12 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                       },
                       itemBuilder: (_, index) {
                         final card = cards[index];
-                        final cardSpent = card.getSpent(_isPerformanceMode, targetDate: selectedSummaryDate);
-                        final remain = card.total - cardSpent;
-
-                        return Padding(
-                          key: ValueKey(card.name), 
-                          padding: const EdgeInsets.only(bottom: 20),
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque, 
-                            onTap: () {
-                              Navigator.pop(context); 
-                              _showCardDetailModal(context, card, targetDate: selectedSummaryDate);
-                            },
-                            child: Row(
-                              children: [
-                                Container(
-                                  margin: const EdgeInsets.only(left: 4),
-                                  width: 24, 
-                                  height: 24,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFE0E5EC),
-                                    shape: BoxShape.circle,
-                                    boxShadow: [
-                                      const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 3),
-                                      BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 3),
-                                    ],
-                                  ),
-                                  alignment: Alignment.center,
-                                  child: Transform.scale(
-                                    scale: card.name == '국민카드' 
-                                        ? 1.8 
-                                        : card.name == '삼성카드' 
-                                            ? 1.3 
-                                            : 1.0, 
-                                    child: Image.asset(
-                                      card.logoPath,
-                                      width: 16, 
-                                      height: 16,
-                                      fit: BoxFit.contain,
-                                      errorBuilder: (context, error, stackTrace) {
-                                        return const Icon(Icons.credit_card, size: 12, color: Color(0xFF2F60FF));
-                                      },
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(card.name, style: const TextStyle(color: Color(0xFF9098B1), fontSize: 12)),
-                                      Text(
-                                        '${_formatCurrency(cardSpent)}원',
-                                        style: const TextStyle(color: Color(0xFF2D3142), fontSize: 16, fontWeight: FontWeight.bold),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-
-                                  if (card.total != -1) // 한도 없음일 때는 텍스트를 그리지 않음
-                                    Text(
-                                      remain >= 0 ? '${_formatCurrency(remain)}원' : '-${_formatCurrency(remain.abs())}원',
-                                      style: TextStyle(
-                                        color: remain >= 0 ? const Color(0xFF2F60FF) : Colors.redAccent,
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                              ],
-                            ),
-                          ),
+                        final spent = card.getSpent(_isPerformanceMode, targetDate: selectedSummaryDate);
+                        return ListTile(
+                          key: ValueKey(card.name),
+                          title: Text(card.name, style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF2D3142))),
+                          subtitle: Text(card.total == -1 ? '실적 제외' : '실적: ${_formatCurrency(spent)} / ${_formatCurrency(card.total)}원'),
+                          trailing: const Icon(Icons.drag_handle),
                         );
                       },
                     ),
@@ -1515,474 +1154,495 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                 ],
               ),
             );
-          }
+          },
         );
       },
     );
   }
 
   // ============================================================================
-  // 5. 메인 화면 렌더링 (Main Screen UI)
+  // 5. 메인 화면 렌더링 영역
   // ============================================================================
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
     final currentMonth = now.month;
-    final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
-    final progressPercent = now.day / daysInMonth;
 
-    final mainScreenCards = cards.take(4).toList();
+    int totalSpent = cards.fold(0, (sum, card) => sum + card.getSpent(_isPerformanceMode));
+    int totalBudget = cards.fold(0, (sum, card) => sum + (card.total == -1 ? 0 : card.total));
+    double progressPercent = totalBudget == 0 ? 0.0 : (totalSpent / totalBudget).clamp(0.0, 1.0);
 
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         title: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Row(
-              children: [
-                Text(
-                  '$currentMonth월 플랜',
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF2D3142),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                GestureDetector(
-                  onTap: () => _showSummaryModal(context),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), 
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE0E5EC),
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 4),
-                        BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 4),
-                      ],
-                    ),
-                    child: const Text(
-                      '요약',
-                      style: TextStyle(fontSize: 12, color: Color(0xFF2D3142), fontWeight: FontWeight.bold), 
-                    ),
-                  ),
-                ),
-              ],
+            Text(
+              '$currentMonth월 지출',
+              style: const TextStyle(color: Color(0xFF2D3142), fontWeight: FontWeight.bold, fontSize: 22),
             ),
-            
+            const SizedBox(width: 12),
             GestureDetector(
-              onTap: () {
-                setState(() {
-                  _isPerformanceMode = !_isPerformanceMode;
-                  settingsBox.put('isPerformanceMode', _isPerformanceMode);
-                });
-              },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), 
+              onTap: () => _showSummaryModal(context),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color: const Color(0xFFE0E5EC),
                   borderRadius: BorderRadius.circular(12),
-                  boxShadow: _isPerformanceMode
-                      ? [
-                          const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 4),
-                          BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 4),
-                        ]
-                      : [
-                          const BoxShadow(color: Colors.white, offset: Offset(2, 2), blurRadius: 4),
-                          BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(-2, -2), blurRadius: 4),
-                        ],
+                  boxShadow: [
+                    const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 4),
+                    BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 4),
+                  ],
                 ),
-                child: Text(
-                  _isPerformanceMode ? '실적 보기' : '청구액 보기',
-                  style: TextStyle(
-                    fontSize: 12, 
-                    color: _isPerformanceMode ? const Color(0xFF2F60FF) : const Color(0xFF9098B1), 
-                    fontWeight: FontWeight.bold
-                  ), 
+                child: const Text(
+                  '요약',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF2D3142), fontWeight: FontWeight.bold),
                 ),
               ),
             ),
           ],
         ),
-      ),
-      body: SafeArea(
-        bottom: true,
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 5), 
-              _buildProgressSection(progressPercent, now.day, currentMonth),
-              const SizedBox(height: 55), 
-              
-              GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 18, 
-                  mainAxisSpacing: 22, 
-                  childAspectRatio: 0.85, 
-                ),
-                itemCount: mainScreenCards.length,
-                itemBuilder: (context, index) => GestureDetector(
-                  onTap: () => _showCardDetailModal(context, mainScreenCards[index]), 
-                  child: BudgetCardWidget(data: mainScreenCards[index], isPerformanceMode: _isPerformanceMode),
+        actions: [
+          GestureDetector(
+            onTap: () {
+              setState(() {
+                _isPerformanceMode = !_isPerformanceMode;
+                settingsBox.put('isPerformanceMode', _isPerformanceMode);
+              });
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              margin: const EdgeInsets.only(right: 16, top: 12, bottom: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: _isPerformanceMode ? const Color(0xFF2F60FF) : const Color(0xFFE0E5EC),
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: _isPerformanceMode
+                    ? [
+                        BoxShadow(color: const Color(0xFF2F60FF).withOpacity(0.4), offset: const Offset(2, 2), blurRadius: 4),
+                      ]
+                    : [
+                        const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 4),
+                        BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 4),
+                      ],
+              ),
+              child: Text(
+                _isPerformanceMode ? '실적 확인' : '청구금액 확인',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: _isPerformanceMode ? Colors.white : const Color(0xFF2D3142),
                 ),
               ),
-              
-              const SizedBox(height: 55),
-              
-              Center(
-                child: GestureDetector(
-                  onTap: () => _showAddExpenseModal(context),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF4A7DFF), Color(0xFF1A4BFF)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      boxShadow: [
-                        BoxShadow(color: const Color(0xFF2F60FF).withOpacity(0.4), offset: const Offset(4, 6), blurRadius: 12),
-                        const BoxShadow(color: Colors.white, offset: Offset(-4, -4), blurRadius: 8),
-                      ],
+            ),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            const SizedBox(height: 16),
+            _buildProgressSection(progressPercent, now.day, currentMonth),
+            const SizedBox(height: 24),
+            Expanded(
+              child: GridView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 16,
+                  crossAxisSpacing: 16,
+                  childAspectRatio: 0.95,
+                ),
+                itemCount: cards.length,
+                itemBuilder: (context, index) {
+                  return BudgetCardWidget(
+                    data: cards[index],
+                    isPerformanceMode: _isPerformanceMode,
+                    onTap: () => _showCardDetailModal(context, cards[index]),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 16),
+            Center(
+              child: GestureDetector(
+                onTap: () => _showAddExpenseModal(context),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF4A7DFF), Color(0xFF1A4BFF)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
-                    child: const Text('지출 내역 추가', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                    boxShadow: [
+                      BoxShadow(color: const Color(0xFF2F60FF).withOpacity(0.4), offset: const Offset(4, 6), blurRadius: 12),
+                      const BoxShadow(color: Colors.white, offset: Offset(-4, -4), blurRadius: 12),
+                    ],
+                  ),
+                  child: const Text(
+                    '지출 내역 추가',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
                   ),
                 ),
               ),
-              
-              const SizedBox(height: 40),
-            ],
-          ),
+            ),
+            const SizedBox(height: 16),
+          ],
         ),
       ),
     );
   }
 
   // --------------------------------------------------------------------------
-  // 5-1. 내부 서브 컴포넌트: 요약 모달용 통계 카드
+  // 5-1. 내부 서브 컴포넌트: 상단 요약 카드 항목 빌더
   // --------------------------------------------------------------------------
-  Widget _summaryCard(
-      String title,
-      String value,
-      Color valueColor, {
-      String? subText,
-    }) {
-      return Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: const Color(0xFFE0E5EC),
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            const BoxShadow(
-              color: Colors.white,
-              offset: Offset(-6, -6),
-              blurRadius: 12,
-            ),
-            BoxShadow(
-              color: const Color(0xFFA3B1C6).withOpacity(0.5),
-              offset: const Offset(6, 6),
-              blurRadius: 12,
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 14,
-                color: Color(0xFF9098B1),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 12),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
+  Widget _buildSummaryItem(String label, String value, Color valueColor, {String? subText}) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE0E5EC),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.4), offset: const Offset(4, 4), blurRadius: 8),
+          const BoxShadow(color: Colors.white, offset: Offset(-4, -4), blurRadius: 8),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(color: Color(0xFF9098B1), fontSize: 12, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  value,
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: valueColor),
+                ),
+                if (subText != null) ...[
+                  const SizedBox(width: 8),
                   Text(
-                    value,
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: valueColor,
-                    ),
+                    subText,
+                    style: const TextStyle(fontSize: 14, color: Color(0xFF9098B1), fontWeight: FontWeight.w600),
                   ),
-                  if (subText != null) ...[
-                    const SizedBox(width: 8),
-                    Text(
-                      subText,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Color(0xFF9098B1),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
                 ],
-              ),
+              ],
             ),
-          ],
-        ),
-      );
-    }
+          ),
+        ],
+      ),
+    );
+  }
 
   // --------------------------------------------------------------------------
-  // 5-2. 내부 서브 컴포넌트: 상단 이번 달 진행률 바 (게이지)
+  // 5-2. 내부 서브 컴포넌트: 상단 이번 달 진행률 바 (게이지 및 날짜 툴팁)
   // --------------------------------------------------------------------------
   Widget _buildProgressSection(double progress, int currentDay, int currentMonth) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 40), 
-        
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final maxWidth = constraints.maxWidth;
-            final fillWidth = maxWidth * progress;
-            const tooltipWidth = 48.0;
+    final lastDay = DateTime(DateTime.now().year, currentMonth + 1, 0).day;
+    final double timeProgress = currentDay / lastDay;
 
-            double tooltipLeft = fillWidth - (tooltipWidth / 2);
-            if (tooltipLeft < 0) tooltipLeft = 0;
-            if (tooltipLeft > maxWidth - tooltipWidth) tooltipLeft = maxWidth - tooltipWidth;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final double totalWidth = constraints.maxWidth;
+          final double barHeight = 12.0;
 
-            return Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Container(
-                  height: 12,
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE0E5EC),
-                    borderRadius: BorderRadius.circular(6),
-                    boxShadow: [
-                      const BoxShadow(color: Colors.white, offset: Offset(2, 2), blurRadius: 4),
-                      BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(-2, -2), blurRadius: 4),
-                    ],
-                  ),
-                ),
-                Container(
-                  height: 12,
-                  width: fillWidth,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF2F60FF), Color(0xFF00C6FF)],
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
+          final double timeIndicatorPos = totalWidth * timeProgress;
+          final double progressWidth = totalWidth * progress;
+
+          final double tooltipWidth = 54.0;
+          double tooltipLeft = timeIndicatorPos - (tooltipWidth / 2);
+          if (tooltipLeft < 0) tooltipLeft = 0;
+          if (tooltipLeft + tooltipWidth > totalWidth) tooltipLeft = totalWidth - tooltipWidth;
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 34),
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  // 기본 배경 바 (오목한 디자인)
+                  Container(
+                    height: barHeight,
+                    width: totalWidth,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFD1D9E6),
+                      borderRadius: BorderRadius.circular(barHeight / 2),
                     ),
-                    borderRadius: BorderRadius.circular(6),
                   ),
-                ),
-                Positioned(
-                  left: tooltipLeft,
-                  top: -38,
-                  child: SizedBox(
-                    width: tooltipWidth,
-                    height: 34,
-                    child: Stack(
-                      alignment: Alignment.topCenter,
-                      children: [
-                        Positioned(
-                          bottom: 2,
-                          child: Transform.rotate(
-                            angle: 3.141592 / 4,
-                            child: Container(
-                              width: 10,
-                              height: 10,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFE0E5EC),
-                                boxShadow: [
-                                  BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 2),
-                                ],
+                  // 지출 진행률 채우기 (볼록한 파란 그라데이션 바)
+                  Container(
+                    height: barHeight,
+                    width: progressWidth,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(barHeight / 2),
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF8faaff), Color(0xFF2F60FF)],
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                      ),
+                    ),
+                  ),
+                  // 날짜 인디케이터 세로 막대 핀
+                  Positioned(
+                    left: timeIndicatorPos - 2,
+                    top: -4,
+                    child: Container(
+                      width: 4,
+                      height: barHeight + 8,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF2D3142),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  // 날짜 말풍선 툴팁 컴포넌트
+                  Positioned(
+                    left: tooltipLeft,
+                    top: -38,
+                    child: SizedBox(
+                      width: tooltipWidth,
+                      height: 34,
+                      child: Stack(
+                        alignment: Alignment.topCenter,
+                        children: [
+                          Positioned(
+                            bottom: 2,
+                            child: Transform.rotate(
+                              angle: 3.141592 / 4,
+                              child: Container(
+                                width: 10,
+                                height: 10,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFE0E5EC),
+                                  boxShadow: [
+                                    BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 3),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                        Container(
-                          width: tooltipWidth,
-                          height: 26,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFE0E5EC),
-                            borderRadius: BorderRadius.circular(6),
-                            boxShadow: [
-                              const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 3),
-                              BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 3),
-                            ],
+                          Container(
+                            width: tooltipWidth,
+                            height: 26,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE0E5EC),
+                              borderRadius: BorderRadius.circular(8),
+                              boxShadow: [
+                                BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 4),
+                                const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 4),
+                              ],
+                            ),
+                            child: Text(
+                              '${currentDay}일',
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
+                            ),
                           ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            '$currentDay일', 
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
-                          ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ],
-            );
-          },
-        ),
-      ],
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '지출 진행률: ${(progress * 100).toStringAsFixed(1)}%',
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF9098B1), fontWeight: FontWeight.w600),
+                  ),
+                  Text(
+                    '한달 기준: ${(timeProgress * 100).toStringAsFixed(1)}%',
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF9098B1), fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 }
 
 // ============================================================================
-// 6. 커스텀 위젯: 개별 카드 (그리드뷰 내부 아이템 및 도넛 차트)
+// 6. 개별 카드 위젯 (뉴모피즘 스타일 원형 인디케이터 포함)
 // ============================================================================
 class BudgetCardWidget extends StatefulWidget {
   final CardData data;
   final bool isPerformanceMode;
-  const BudgetCardWidget({super.key, required this.data, required this.isPerformanceMode});
+  final VoidCallback onTap;
+
+  const BudgetCardWidget({
+    super.key,
+    required this.data,
+    required this.isPerformanceMode,
+    required this.onTap,
+  });
+
   @override
   State<BudgetCardWidget> createState() => _BudgetCardWidgetState();
 }
 
 class _BudgetCardWidgetState extends State<BudgetCardWidget> {
   String _formatCurrency(int amount) {
-    return amount.toString().replaceAllMapped(
-        RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},');
+    return amount.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},');
   }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFFE0E5EC),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
+    final int spentAmount = widget.data.getSpent(widget.isPerformanceMode);
+    double spentPercent = 0.0;
+    bool isOver = false;
+
+    if (widget.data.total != -1 && widget.data.total > 0) {
+      spentPercent = (spentAmount / widget.data.total).clamp(0.0, 1.0);
+      if (spentAmount > widget.data.total) {
+        isOver = true;
+      }
+    }
+
+    Color activeColor = const Color(0xFF2F60FF);
+    if (widget.data.total == -1) {
+      activeColor = const Color(0xFF9098B1);
+    }
+
+    return GestureDetector(
+      onTap: widget.onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFFE0E5EC),
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
               color: const Color(0xFFA3B1C6).withOpacity(0.6),
               offset: const Offset(8, 8),
-              blurRadius: 16),
-          const BoxShadow(
-              color: Colors.white, offset: Offset(-8, -8), blurRadius: 16)
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE0E5EC),
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 3),
-                      BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 3),
-                    ],
-                  ),
-                  alignment: Alignment.center,
-                  clipBehavior: Clip.antiAlias,
-                  child: Transform.scale(
-                    scale: widget.data.name == '국민카드' ? 1.8 : widget.data.name == '삼성카드' ? 1.3 : 1.0,
-                    child: Image.asset(
-                      widget.data.logoPath,
-                      width: 16,
-                      height: 16,
-                      fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) {
-                        return const Icon(Icons.credit_card, size: 14, color: Color(0xFF2F60FF));
-                      },
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    widget.data.name,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
-                  ),
-                ),
-              ],
+              blurRadius: 16,
             ),
-            const SizedBox(height: 15),
-            Expanded(child: Center(child: _buildDonutChart())),
+            const BoxShadow(
+              color: Colors.white,
+              offset: Offset(-8, -8),
+              blurRadius: 16,
+            )
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildDonutChart() {
-    final spentAmount = widget.data.getSpent(widget.isPerformanceMode);
-    final spentPercent = widget.data.getSpentPercent(spentAmount);
-    final isOver = widget.data.isOverBudget(spentAmount);
-
-    final activeColor = widget.isPerformanceMode
-        ? const Color(0xFF2F60FF)
-        : const Color(0xFF00BFA5);
-
-    return Center(
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Container(
-            width: 100,
-            height: 100,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              color: Color(0xFFE0E5EC),
-              boxShadow: [
-                BoxShadow(color: Color(0xFFA3B1C6), offset: Offset(4, 4), blurRadius: 8),
-                BoxShadow(color: Colors.white, offset: Offset(-4, -4), blurRadius: 8)
-              ],
-            ),
-          ),
-          SizedBox(
-            width: 100,
-            height: 100,
-            child: CircularProgressIndicator(
-              value: widget.data.total == -1 ? 0.0 : spentPercent,
-              strokeWidth: 7,
-              valueColor: AlwaysStoppedAnimation<Color>(activeColor),
-              strokeCap: StrokeCap.round,
-            ),
-          ),
-          if (isOver && widget.data.total != -1)
-            SizedBox(
-              width: 100,
-              height: 100,
-              child: CircularProgressIndicator(
-                value: widget.data.total == 0 ? 1.0 : ((spentAmount - widget.data.total) / widget.data.total).clamp(0.0, 1.0),
-                strokeWidth: 7,
-                valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFF453A)),
-                strokeCap: StrokeCap.round,
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE0E5EC),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 3),
+                        BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 3),
+                      ],
+                    ),
+                    alignment: Alignment.center,
+                    clipBehavior: Clip.antiAlias,
+                    child: Transform.scale(
+                      scale: widget.data.name == '국민카드' ? 1.2 : 1.0,
+                      child: const Icon(Icons.credit_card, size: 14, color: Color(0xFF2D3142)),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      widget.data.name,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF2D3142),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
               ),
-            ),
-          SizedBox(
-            width: 90,
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                _formatCurrency(spentAmount),
-                style: const TextStyle(
-                  fontSize: 16, 
-                  fontWeight: FontWeight.bold, 
-                  color: Color(0xFF2D3142)
+              const Spacer(),
+              Center(
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Container(
+                      width: 84,
+                      height: 84,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE0E5EC),
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(4, 4), blurRadius: 8),
+                          const BoxShadow(color: Colors.white, offset: Offset(-4, -4), blurRadius: 8)
+                        ],
+                      ),
+                    ),
+                    SizedBox(
+                      width: 100,
+                      height: 100,
+                      child: CircularProgressIndicator(
+                        value: widget.data.total == -1 ? 0.0 : spentPercent,
+                        strokeWidth: 7,
+                        valueColor: AlwaysStoppedAnimation<Color>(activeColor),
+                        strokeCap: StrokeCap.round,
+                      ),
+                    ),
+                    if (isOver && widget.data.total != -1)
+                      SizedBox(
+                        width: 100,
+                        height: 100,
+                        child: CircularProgressIndicator(
+                          value: widget.data.total == 0 ? 1.0 : ((spentAmount - widget.data.total) / widget.data.total).clamp(0.0, 1.0),
+                          strokeWidth: 7,
+                          valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFF453A)),
+                          strokeCap: StrokeCap.round,
+                        ),
+                      ),
+                    SizedBox(
+                      width: 90,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          _formatCurrency(spentAmount),
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF2D3142),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ),
+              const Spacer(),
+              Text(
+                widget.data.total == -1 ? '실적 제외 카드' : '목표: ${_formatCurrency(widget.data.total)}원',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF9098B1),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
