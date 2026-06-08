@@ -46,10 +46,11 @@ app.*.map.json
 
 assets/images/
 
-# 안드로이드 아이콘 관련 생성 파일 제외
-android/app/src/main/res/mipmap-*/ic_launcher.png
-android/app/src/main/res/mipmap-*/ic_launcher_round.png
-android/app/src/main/res/drawable-*/launch_background.xml
-
-# iOS 아이콘 관련 생성 파일 제외
+# flutter_launcher_icons 생성 파일
+android/app/src/main/res/mipmap-*/
+android/app/src/main/res/drawable-*/
 ios/Runner/Assets.xcassets/AppIcon.appiconset/
+
+# flutter_native_splash 생성 파일
+android/app/src/main/res/drawable-*/
+web/splash/
