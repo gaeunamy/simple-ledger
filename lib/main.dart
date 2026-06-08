@@ -287,7 +287,9 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                           },
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 150),
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            height: 38,
+                            padding: const EdgeInsets.symmetric(horizontal: 14),
+                            alignment: Alignment.center,
                             decoration: isNoLimit
                                 ? BoxDecoration(
                                     color: const Color(0xFFE0E5EC),
@@ -360,6 +362,8 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
 
   // [개별 지출 내역 메모 수정 다이얼로그]
   void _showExpenseMemoDialog(BuildContext context, CardData card, Expense expense, StateSetter updateParentModal) {
+    // 금액과 메모를 위한 컨트롤러 생성
+    final TextEditingController amountController = TextEditingController(text: expense.amount.toString());
     final TextEditingController memoController = TextEditingController(text: expense.memo ?? '');
 
     showDialog(
@@ -368,18 +372,45 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
         return AlertDialog(
           backgroundColor: const Color(0xFFE0E5EC),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          title: const Text('지출 메모', style: TextStyle(color: Color(0xFF2D3142), fontWeight: FontWeight.bold, fontSize: 18)),
-          content: TextField(
-            controller: memoController,
-            maxLines: 1,
-            style: const TextStyle(fontSize: 16, color: Color(0xFF2D3142), fontWeight: FontWeight.bold),
-            decoration: InputDecoration(
-              hintText: '예: 마트, 주유, 배달',
-              hintStyle: const TextStyle(color: Color(0xFF9098B1), fontSize: 14),
-              filled: true,
-              fillColor: const Color(0xFFD1D9E6),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          title: const Text('지출 수정', style: TextStyle(color: Color(0xFF2D3142), fontWeight: FontWeight.bold, fontSize: 18)),
+          content: SingleChildScrollView( 
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start, 
+              children: [
+                const Text('소비 금액', style: TextStyle(color: Color(0xFF9098B1), fontSize: 13, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: amountController,
+                  keyboardType: TextInputType.number,
+                  style: const TextStyle(fontSize: 16, color: Color(0xFF2D3142), fontWeight: FontWeight.bold),
+                  decoration: InputDecoration(
+                    hintText: '금액 입력',
+                    hintStyle: const TextStyle(color: Color(0xFF9098B1), fontSize: 14),
+                    filled: true,
+                    fillColor: const Color(0xFFD1D9E6),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), 
+                  ),
+                ),
+                const SizedBox(height: 24),
+                
+                const Text('지출 설명 (메모)', style: TextStyle(color: Color(0xFF9098B1), fontSize: 13, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: memoController,
+                  maxLines: 1,
+                  style: const TextStyle(fontSize: 16, color: Color(0xFF2D3142), fontWeight: FontWeight.bold),
+                  decoration: InputDecoration(
+                    hintText: '예: 커피, 식비 등',
+                    hintStyle: const TextStyle(color: Color(0xFF9098B1), fontSize: 14),
+                    filled: true,
+                    fillColor: const Color(0xFFD1D9E6),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), 
+                  ),
+                ),
+              ],
             ),
           ),
           actions: [
@@ -390,12 +421,32 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
             TextButton(
               onPressed: () {
                 setState(() {
-                  expense.memo = memoController.text.trim();
-                  int idx = cards.indexOf(card);
-                  cardBox.putAt(idx, card);
+                  final input = amountController.text.replaceAll(',', '');
+                  final parsedAmount = int.tryParse(input);
+                  
+                  if (parsedAmount != null && parsedAmount > 0) {
+                    final updatedExpense = Expense(
+                      amount: parsedAmount,
+                      date: expense.date,
+                      installmentMonths: expense.installmentMonths,
+                      isInstallment: expense.isInstallment,
+                      memo: memoController.text.trim(),
+                    );
+                    
+                    int expenseIdx = card.expenses.indexOf(expense);
+                    card.expenses[expenseIdx] = updatedExpense;
+                    
+                    int cardIdx = cards.indexOf(card);
+                    cardBox.putAt(cardIdx, card);
+                    
+                    updateParentModal(() {});
+                    Navigator.pop(context);
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('올바른 금액을 입력해주세요.')),
+                    );
+                  }
                 });
-                updateParentModal(() {});
-                Navigator.pop(context);
               },
               child: const Text('확인', style: TextStyle(color: Color(0xFF2F60FF), fontWeight: FontWeight.bold)),
             ),
@@ -405,7 +456,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
     );
   }
 
-  // [새로운 지출 내역 추가 바텀 시트 (할부 입력 포함)]
+  // [새로운 지출 내역 추가 바텀 시트 (할부 및 인라인 달력 포함)]
   void _showAddExpenseModal(BuildContext context, {int initialCardIndex = 0}) {
     _isExpenseModalOpen = true;
     int selectedCardIndex = initialCardIndex;
@@ -414,6 +465,11 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
     bool isInstallmentActive = false; 
     bool showInstallmentPicker = false; 
     int? selectedInstallment; 
+
+    // 인라인 달력 관련 상태
+    bool showCalendar = false;
+    DateTime selectedDate = DateTime.now();
+    DateTime currentMonthView = DateTime(selectedDate.year, selectedDate.month, 1);
 
     final TextEditingController amountController = TextEditingController();
 
@@ -452,14 +508,174 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                             ),
                           ),
                         ),
-                        const Text(
-                          '지출 내역 추가',
-                          style: TextStyle(
-                            fontSize: 18, 
-                            fontWeight: FontWeight.bold, 
-                            color: Color(0xFF2D3142)
-                          ),
+                        
+                        // 타이틀 및 날짜 선택 버튼
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              '지출 내역 추가',
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)),
+                            ),
+                            Builder(
+                              builder: (context) {
+                                // '오늘'인지 확인
+                                final isToday = selectedDate.year == DateTime.now().year &&
+                                                selectedDate.month == DateTime.now().month &&
+                                                selectedDate.day == DateTime.now().day;
+
+                                return GestureDetector(
+                                  onTap: () {
+                                    FocusScope.of(context).unfocus(); 
+                                    setModalState(() {
+                                      showCalendar = !showCalendar;
+                                      if (showCalendar) {
+                                        currentMonthView = DateTime(selectedDate.year, selectedDate.month, 1);
+                                      }
+                                    });
+                                  },
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 150),
+                                    height: 32,
+                                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFE0E5EC),
+                                      borderRadius: BorderRadius.circular(12),
+                                      boxShadow: isToday 
+                                          ? [ // 오늘일 때 (오목한 효과 - 청구액 보기와 동일하게 Offset 반전)
+                                              const BoxShadow(color: Colors.white, offset: Offset(2, 2), blurRadius: 4),
+                                              BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(-2, -2), blurRadius: 4),
+                                            ]
+                                          : [ // 다른 날짜일 때 (볼록한 효과)
+                                              const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 4),
+                                              BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 4),
+                                            ],
+                                    ),
+                                    child: Text(
+                                      isToday ? '오늘' : '${selectedDate.month}월 ${selectedDate.day}일',
+                                      style: TextStyle(
+                                        fontSize: 13, 
+                                        fontWeight: FontWeight.bold, 
+                                        color: isToday ? const Color(0xFF9098B1) : const Color(0xFF2F60FF),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
                         ),
+
+                        // [인라인 달력 영역]
+                        if (showCalendar) ...[
+                          const SizedBox(height: 16),
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE0E5EC),
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.3), offset: const Offset(4, 4), blurRadius: 8),
+                                const BoxShadow(color: Colors.white, offset: Offset(-4, -4), blurRadius: 8),
+                              ],
+                            ),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    GestureDetector(
+                                      onTap: () => setModalState(() => currentMonthView = DateTime(currentMonthView.year, currentMonthView.month - 1, 1)),
+                                      child: const Icon(Icons.chevron_left, color: Color(0xFF2D3142)),
+                                    ),
+                                    Text(
+                                      '${currentMonthView.year}년 ${currentMonthView.month}월',
+                                      style: const TextStyle(color: Color(0xFF2D3142), fontWeight: FontWeight.bold, fontSize: 15),
+                                    ),
+                                    GestureDetector(
+                                      onTap: () => setModalState(() => currentMonthView = DateTime(currentMonthView.year, currentMonthView.month + 1, 1)),
+                                      child: const Icon(Icons.chevron_right, color: Color(0xFF2D3142)),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                                  children: const [
+                                    Text('일', style: TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                                    Text('월', style: TextStyle(color: Color(0xFF9098B1), fontSize: 12)),
+                                    Text('화', style: TextStyle(color: Color(0xFF9098B1), fontSize: 12)),
+                                    Text('수', style: TextStyle(color: Color(0xFF9098B1), fontSize: 12)),
+                                    Text('목', style: TextStyle(color: Color(0xFF9098B1), fontSize: 12)),
+                                    Text('금', style: TextStyle(color: Color(0xFF9098B1), fontSize: 12)),
+                                    Text('토', style: TextStyle(color: Color(0xFF2F60FF), fontSize: 12, fontWeight: FontWeight.bold)),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                Builder(
+                                  builder: (context) {
+                                    final daysInMonth = DateTime(currentMonthView.year, currentMonthView.month + 1, 0).day;
+                                    final firstWeekday = DateTime(currentMonthView.year, currentMonthView.month, 1).weekday; 
+                                    int blankSpaces = firstWeekday == 7 ? 0 : firstWeekday;
+
+                                    return GridView.builder(
+                                      shrinkWrap: true,
+                                      physics: const NeverScrollableScrollPhysics(),
+                                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                        crossAxisCount: 7,
+                                        mainAxisSpacing: 8,
+                                        crossAxisSpacing: 8,
+                                      ),
+                                      itemCount: blankSpaces + daysInMonth,
+                                      itemBuilder: (context, index) {
+                                        if (index < blankSpaces) return const SizedBox.shrink();
+                                        
+                                        final day = index - blankSpaces + 1;
+                                        final isSelected = currentMonthView.year == selectedDate.year &&
+                                                           currentMonthView.month == selectedDate.month &&
+                                                           day == selectedDate.day;
+
+                                        return GestureDetector(
+                                          onTap: () {
+                                            setModalState(() {
+                                              selectedDate = DateTime(currentMonthView.year, currentMonthView.month, day);
+                                              showCalendar = false; // 날짜 선택 시 달력 닫기
+                                            });
+                                          },
+                                          child: Container(
+                                            alignment: Alignment.center,
+                                            decoration: isSelected
+                                                ? BoxDecoration(
+                                                    color: const Color(0xFFE0E5EC),
+                                                    shape: BoxShape.circle,
+                                                    boxShadow: [
+                                                      const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 4),
+                                                      BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 4),
+                                                    ],
+                                                  )
+                                                : const BoxDecoration(shape: BoxShape.circle, color: Colors.transparent),
+                                            child: Text(
+                                              '$day',
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                                                color: isSelected ? const Color(0xFF2F60FF) : const Color(0xFF2D3142),
+                                              ),
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    );
+                                  }
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                        // [인라인 달력 영역 끝]
+
                         const SizedBox(height: 24),
                         
                         Container(
@@ -480,7 +696,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                                       decoration: isSelected
                                           ? BoxDecoration(
                                               color: const Color(0xFFE0E5EC),
-                                              borderRadius: BorderRadius.circular(8),
+                                              borderRadius: BorderRadius.circular(12),
                                               boxShadow: [
                                                 const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 3),
                                                 BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.4), offset: const Offset(2, 2), blurRadius: 3),
@@ -665,7 +881,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                                     0, 
                                     Expense(
                                       amount: amount, 
-                                      date: DateTime.now(),
+                                      date: selectedDate,
                                       installmentMonths: selectedInstallment,
                                       isInstallment: isInstallmentActive,
                                     )
@@ -853,7 +1069,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                           child: const Text(
                             '+',
                             style: TextStyle(
-                              fontSize: 16, 
+                              fontSize: 18, 
                               color: Color(0xFF2D3142), 
                               fontWeight: FontWeight.bold
                             ),
@@ -1054,8 +1270,12 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
         return StatefulBuilder(
           builder: (context, setModalState) {
             final totalSpent = cards.fold<int>(0, (sum, card) => sum + card.getSpent(_isPerformanceMode, targetDate: selectedSummaryDate));
-            final totalBudget = cards.fold<int>(0, (sum, card) => sum + card.total);
-            final totalRemaining = totalBudget - totalSpent;
+            final totalBudget = cards.fold<int>(0, (sum, card) => sum + (card.total == -1 ? 0 : card.total));
+            final totalRemaining = cards.fold<int>(0, (sum, card) {
+              if (card.total == -1) return sum;
+              final spent = card.getSpent(_isPerformanceMode, targetDate: selectedSummaryDate);
+              return sum + (card.total - spent);
+            });
 
             return Container(
               height: MediaQuery.of(context).size.height * 0.8,
