@@ -149,12 +149,15 @@ class CardData {
   }
 
   bool isOverBudget(bool isPerformanceMode, {DateTime? targetDate}) {
-    if (total <= 0) return false; 
+    if (total == -1) return false;
     return getSpent(isPerformanceMode, targetDate: targetDate) > total;
   }
       
-  double getSpentPercent(bool isPerformanceMode, {DateTime? targetDate}) => 
-      total > 0 ? (getSpent(isPerformanceMode, targetDate: targetDate) / total).clamp(0.0, 1.0) : 0.0;
+  double getSpentPercent(bool isPerformanceMode, {DateTime? targetDate}) {
+    if (total == -1) return 0.0;
+    if (total == 0) return getSpent(isPerformanceMode, targetDate: targetDate) > 0 ? 1.0 : 0.0;
+    return (getSpent(isPerformanceMode, targetDate: targetDate) / total).clamp(0.0, 1.0);
+  }
 }
 
 // ============================================================================
@@ -213,18 +216,9 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && _isExpenseModalOpen) {
-      Future.delayed(const Duration(milliseconds: 300), () {
-        if (mounted && _isExpenseModalOpen) {
-          _amountFocusNode.unfocus();
-          
-          Future.delayed(const Duration(milliseconds: 50), () {
-            if (mounted) {
-              _amountFocusNode.requestFocus();
-              SystemChannels.textInput.invokeMethod('TextInput.show');
-            }
-          });
-        }
-      });
+      if (mounted && _amountFocusNode.hasFocus) {
+        SystemChannels.textInput.invokeMethod('TextInput.show');
+      }
     }
   }
 
@@ -244,9 +238,9 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
 
   // [카드 예산 및 메모 설정 다이얼로그]
   void _showEditCardDialog(BuildContext context, CardData card, StateSetter updateParentModal) {
-    final TextEditingController budgetController = TextEditingController(text: card.total == 0 ? '' : card.total.toString());
+    final TextEditingController budgetController = TextEditingController(text: card.total == -1 ? '' : card.total.toString());
     final TextEditingController descController = TextEditingController(text: card.description ?? '');
-    bool isNoLimit = card.total == 0;
+    bool isNoLimit = card.total == -1;
 
     showDialog(
       context: context,
@@ -349,7 +343,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                 TextButton(
                   onPressed: () {
                     setState(() {
-                      card.total = isNoLimit ? 0 : (int.tryParse(budgetController.text.replaceAll(',', '')) ?? 0);
+                      card.total = isNoLimit ? -1 : (int.tryParse(budgetController.text.replaceAll(',', '')) ?? 0);
                       card.description = descController.text.trim();
                       int idx = cards.indexOf(card);
                       cardBox.putAt(idx, card);
@@ -788,7 +782,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
   }
 
   // [특정 카드의 전체 지출 상세 내역 바텀 시트]
-  void _showCardDetailModal(BuildContext context, CardData card) {
+  void _showCardDetailModal(BuildContext context, CardData card, {DateTime? targetDate}) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -887,19 +881,19 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
 
                   Builder(
                     builder: (context) {
-                      final now = DateTime.now();
+                      final target = targetDate ?? DateTime.now();
                       final filteredExpenses = card.expenses.where((expense) {
                         if (_isPerformanceMode) {
-                          if (expense.date.year == now.year && expense.date.month == now.month) {
+                          if (expense.date.year == target.year && expense.date.month == target.month) {
                             return !(expense.isInstallment && expense.installmentMonths == null);
                           }
                           return false;
                         } else {
                           if (expense.isInstallment && expense.installmentMonths != null) {
-                            int monthsPassed = (now.year - expense.date.year) * 12 + (now.month - expense.date.month);
+                            int monthsPassed = (target.year - expense.date.year) * 12 + (target.month - expense.date.month);
                             return monthsPassed >= 0 && monthsPassed < expense.installmentMonths!;
                           } else {
-                            return expense.date.year == now.year && expense.date.month == now.month;
+                            return expense.date.year == target.year && expense.date.month == target.month;
                           }
                         }
                       }).toList();
@@ -1237,7 +1231,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                             behavior: HitTestBehavior.opaque, 
                             onTap: () {
                               Navigator.pop(context); 
-                              _showCardDetailModal(context, card); 
+                              _showCardDetailModal(context, card, targetDate: selectedSummaryDate);
                             },
                             child: Row(
                               children: [
@@ -1286,7 +1280,7 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                                 ),
 
                                   Text(
-                                    card.total == 0 
+                                    card.total == -1
                                         ? '한도 없음'
                                         : (remain >= 0
                                             ? '${_formatCurrency(remain)}원'
@@ -1743,18 +1737,18 @@ class _BudgetCardWidgetState extends State<BudgetCardWidget> {
             width: 100,
             height: 100,
             child: CircularProgressIndicator(
-              value: widget.data.total == 0 ? 0.0 : spentPercent, 
+              value: widget.data.total == -1 ? 0.0 : spentPercent,
               strokeWidth: 7,
               valueColor: AlwaysStoppedAnimation<Color>(activeColor),
               strokeCap: StrokeCap.round,
             ),
           ),
-          if (isOver && widget.data.total > 0)
+          if (isOver && widget.data.total != -1)
             SizedBox(
               width: 100,
               height: 100,
               child: CircularProgressIndicator(
-                value: ((spentAmount - widget.data.total) / widget.data.total).clamp(0.0, 1.0),
+                value: widget.data.total == 0 ? 1.0 : ((spentAmount - widget.data.total) / widget.data.total).clamp(0.0, 1.0),
                 strokeWidth: 7,
                 valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFF453A)),
                 strokeCap: StrokeCap.round,
