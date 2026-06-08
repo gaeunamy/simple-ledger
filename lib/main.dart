@@ -650,137 +650,132 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                   ),
                   const SizedBox(height: 24),
 
-                  Expanded(
-                    child: card.expenses.isEmpty
-                        ? const Center(
-                            child: Text(
-                              '아직 등록된 지출 내역이 없습니다.',
-                              style: TextStyle(
-                                color: Color(0xFF9098B1),
-                                fontSize: 16,
-                              ),
-                            ),
-                          )
-                        : ListView.builder(
-                            itemCount: card.expenses.length,
-                            itemBuilder: (_, index) {
-                              final expense = card.expenses[index];
-                              final now = DateTime.now();
-                              bool shouldShow = false;
+                  Builder(
+                    builder: (context) {
+                      final now = DateTime.now();
+                      final filteredExpenses = card.expenses.where((expense) {
+                        if (_isPerformanceMode) {
+                          if (expense.date.year == now.year && expense.date.month == now.month) {
+                            return !(expense.isInstallment && expense.installmentMonths == null);
+                          }
+                          return false;
+                        } else {
+                          if (expense.isInstallment && expense.installmentMonths != null) {
+                            int monthsPassed = (now.year - expense.date.year) * 12 + (now.month - expense.date.month);
+                            return monthsPassed >= 0 && monthsPassed < expense.installmentMonths!;
+                          } else {
+                            return expense.date.year == now.year && expense.date.month == now.month;
+                          }
+                        }
+                      }).toList();
 
-                              if (_isPerformanceMode) {
-                                if (expense.date.year == now.year && expense.date.month == now.month) {
-                                  if (!(expense.isInstallment && expense.installmentMonths == null)) {
-                                    shouldShow = true;
+                      return Expanded(
+                        child: filteredExpenses.isEmpty
+                            ? const Center(
+                                child: Text(
+                                  '이번 달 지출 내역이 없습니다.',
+                                  style: TextStyle(
+                                    color: Color(0xFF9098B1),
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              )
+                            : ListView.builder(
+                                itemCount: filteredExpenses.length,
+                                itemBuilder: (_, index) {
+                                  final expense = filteredExpenses[index];
+
+                                  int displayedAmount = expense.amount;
+                                  if (!_isPerformanceMode) {
+                                    if (expense.isInstallment && expense.installmentMonths != null) {
+                                      displayedAmount = expense.amount ~/ expense.installmentMonths!;
+                                    }
                                   }
-                                }
-                              } else {
-                                if (expense.isInstallment && expense.installmentMonths != null) {
-                                  int monthsPassed = (now.year - expense.date.year) * 12 + (now.month - expense.date.month);
-                                  if (monthsPassed >= 0 && monthsPassed < expense.installmentMonths!) {
-                                    shouldShow = true;
+
+                                  Color circleColor = const Color(0xFF2F60FF);
+                                  if (expense.isInstallment && expense.installmentMonths == null) {
+                                    circleColor = const Color(0xFF00BFA5); 
                                   }
-                                } else {
-                                  if (expense.date.year == now.year && expense.date.month == now.month) {
-                                    shouldShow = true;
-                                  }
-                                }
-                              }
 
-                              // 이번 달 내역이 아니면 숨기기
-                              if (!shouldShow) return const SizedBox.shrink();
-
-                              // 표시 금액 계산
-                              int displayedAmount = expense.amount;
-                              if (!_isPerformanceMode) {
-                                if (expense.isInstallment && expense.installmentMonths != null) {
-                                  displayedAmount = expense.amount ~/ expense.installmentMonths!;
-                                }
-                              }
-
-                              // 동그라미 색상 정의 (개월 수 없으면 아침 초록색, 있으면 파란색)
-                              Color circleColor = const Color(0xFF2F60FF);
-                              if (expense.isInstallment && expense.installmentMonths == null) {
-                                circleColor = const Color(0xFF00BFA5); 
-                              }
-
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 20),
-                                child: Row(
-                                  children: [
-                                    SizedBox(
-                                      width: 60,
-                                      child: Text(
-                                        expense.formattedDate,
-                                        style: const TextStyle(
-                                          color: Color(0xFF9098B1),
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 16),
-                                    Expanded(
-                                      child: Row(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        crossAxisAlignment: CrossAxisAlignment.center,
-                                        children: [
-                                          if (expense.isInstallment) ...[
-                                            Container(
-                                              width: 6,
-                                              height: 6,
-                                              decoration: BoxDecoration(
-                                                color: circleColor,
-                                                shape: BoxShape.circle,
-                                              ),
-                                            ),
-                                            const SizedBox(width: 6),
-                                          ],
-                                          Text(
-                                            '${_formatCurrency(displayedAmount)}원',
+                                  return Padding(
+                                    padding: const EdgeInsets.only(bottom: 20),
+                                    child: Row(
+                                      children: [
+                                        SizedBox(
+                                          width: 60,
+                                          child: Text(
+                                            expense.formattedDate,
                                             style: const TextStyle(
-                                              color: Color(0xFF2D3142),
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.bold,
+                                              color: Color(0xFF9098B1),
+                                              fontSize: 14,
                                             ),
                                           ),
-                                          if (_isPerformanceMode && expense.isInstallment && expense.installmentMonths != null) ...[
-                                            const SizedBox(width: 4),
-                                            Text(
-                                              '/${expense.installmentMonths}개월',
-                                              style: const TextStyle(
-                                                color: Color(0xFF9098B1),
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.normal,
-                                              ),
-                                            ),
-                                          ],
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(width: 16),
-                                    GestureDetector(
-                                      onTap: () {
-                                        setState(() {
-                                          card.expenses.removeAt(index); 
-                                          int cardIndex = cards.indexOf(card);
-                                          cardBox.putAt(cardIndex, card);
-                                        });
-                                        setModalState(() {}); 
-                                      },
-                                      child: Container(
-                                        padding: const EdgeInsets.all(8),
-                                        child: const Icon(
-                                          Icons.close,
-                                          color: Colors.redAccent,
-                                          size: 20,
                                         ),
-                                      ),
+                                        const SizedBox(width: 16),
+                                        Expanded(
+                                          child: Row(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            crossAxisAlignment: CrossAxisAlignment.center,
+                                            children: [
+                                              if (expense.isInstallment) ...[
+                                                Container(
+                                                  width: 6,
+                                                  height: 6,
+                                                  decoration: BoxDecoration(
+                                                    color: circleColor,
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 6),
+                                              ],
+                                              Text(
+                                                '${_formatCurrency(displayedAmount)}원',
+                                                style: const TextStyle(
+                                                  color: Color(0xFF2D3142),
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                              if (_isPerformanceMode && expense.isInstallment && expense.installmentMonths != null) ...[
+                                                const SizedBox(width: 4),
+                                                Text(
+                                                  '/${expense.installmentMonths}개월',
+                                                  style: const TextStyle(
+                                                    color: Color(0xFF9098B1),
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.normal,
+                                                  ),
+                                                ),
+                                              ],
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(width: 16),
+                                        GestureDetector(
+                                          onTap: () {
+                                            setState(() {
+                                              card.expenses.remove(expense); 
+                                              int cardIndex = cards.indexOf(card);
+                                              cardBox.putAt(cardIndex, card);
+                                            });
+                                            setModalState(() {}); 
+                                          },
+                                          child: Container(
+                                            padding: const EdgeInsets.all(8),
+                                            child: const Icon(
+                                              Icons.close,
+                                              color: Colors.redAccent,
+                                              size: 20,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                  ],
-                                ),
-                              );
-                            },
-                          ),
+                                  );
+                                },
+                              ),
+                      );
+                    }
                   ),
                 ],
               ),
@@ -842,7 +837,6 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                       ),
                       Row(
                         children: [
-                          // 1. 왼쪽 < 버튼
                           GestureDetector(
                             onTap: () {
                               setModalState(() {
@@ -876,7 +870,6 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                               ),
                             ),
                           const SizedBox(width: 14),
-                          // 2. 오른쪽 > 버튼
                           GestureDetector(
                             onTap: () {
                               setModalState(() {
@@ -954,7 +947,6 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                                   ],
                                 ),
                                 alignment: Alignment.center,
-                                // clipBehavior: Clip.antiAlias,
                                 child: Transform.scale(
                                   scale: card.name == '국민카드' 
                                       ? 1.8 
@@ -1123,7 +1115,6 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
               
               const SizedBox(height: 55),
               
-              // 버튼 부분
               Center(
                 child: GestureDetector(
                   onTap: () => _showAddExpenseModal(context),
