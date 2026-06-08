@@ -82,9 +82,10 @@ class Expense {
     this.memo,
   });
 
+  static const _weekdays = ['월', '화', '수', '목', '금', '토', '일'];
+
   String get formattedDate {
-    const weekdays = ['월', '화', '수', '목', '금', '토', '일'];
-    return '${date.month}.${date.day} ${weekdays[date.weekday - 1]}';
+    return '${date.month}.${date.day} ${_weekdays[date.weekday - 1]}';
   }
 }
 
@@ -148,15 +149,15 @@ class CardData {
     });
   }
 
-  bool isOverBudget(bool isPerformanceMode, {DateTime? targetDate}) {
+  bool isOverBudget(int currentSpent) {
     if (total == -1) return false;
-    return getSpent(isPerformanceMode, targetDate: targetDate) > total;
+    return currentSpent > total;
   }
       
-  double getSpentPercent(bool isPerformanceMode, {DateTime? targetDate}) {
+  double getSpentPercent(int currentSpent) {
     if (total == -1) return 0.0;
-    if (total == 0) return getSpent(isPerformanceMode, targetDate: targetDate) > 0 ? 1.0 : 0.0;
-    return (getSpent(isPerformanceMode, targetDate: targetDate) / total).clamp(0.0, 1.0);
+    if (total == 0) return currentSpent > 0 ? 1.0 : 0.0;
+    return (currentSpent / total).clamp(0.0, 1.0);
   }
 }
 
@@ -215,11 +216,6 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && _isExpenseModalOpen) {
-      if (mounted && _amountFocusNode.hasFocus) {
-        SystemChannels.textInput.invokeMethod('TextInput.show');
-      }
-    }
   }
 
   // --------------------------------------------------------------------------
@@ -1710,8 +1706,8 @@ class _BudgetCardWidgetState extends State<BudgetCardWidget> {
 
   Widget _buildDonutChart() {
     final spentAmount = widget.data.getSpent(widget.isPerformanceMode);
-    final spentPercent = widget.data.getSpentPercent(widget.isPerformanceMode);
-    final isOver = widget.data.isOverBudget(widget.isPerformanceMode);
+    final spentPercent = widget.data.getSpentPercent(spentAmount);
+    final isOver = widget.data.isOverBudget(spentAmount);
 
     final activeColor = widget.isPerformanceMode
         ? const Color(0xFF2F60FF)
