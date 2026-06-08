@@ -215,7 +215,6 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
     );
   }
 
-  // 예산/설정 모달창 내 '한도 없음' 디자인을 버튼형으로 개선한 메서드
   void _showEditCardDialog(BuildContext context, CardData card, StateSetter updateParentModal) {
     final TextEditingController budgetController = TextEditingController(text: card.total == 0 ? '' : card.total.toString());
     final TextEditingController descController = TextEditingController(text: card.description ?? '');
@@ -252,7 +251,6 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                               hintText: isNoLimit ? '한도 없는 카드' : '예산 금액 입력',
                               hintStyle: const TextStyle(color: Color(0xFF9098B1), fontSize: 14),
                               filled: true,
-                              // 한도 없음 상태일 땐 투명도를 주어 비활성화 느낌 강조
                               fillColor: isNoLimit ? const Color(0xFFD1D9E6).withOpacity(0.5) : const Color(0xFFD1D9E6),
                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                               contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -261,7 +259,6 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                         ),
                         const SizedBox(width: 10),
                         
-                        // 기존 체크박스를 제거하고 '할부'와 동일한 뉴모피즘 토글 버튼 적용
                         GestureDetector(
                           onTap: () {
                             setDialogState(() {
@@ -1063,74 +1060,87 @@ class _MultiCardScreenState extends State<MultiCardScreen> with WidgetsBindingOb
                   const SizedBox(height: 24),
                   
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
-                        '요약',
-                        style: TextStyle(
-                          color: Color(0xFF2D3142),
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
+                      const Expanded(
+                        child: Text(
+                          '요약',
+                          style: TextStyle(
+                            color: Color(0xFF2D3142),
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
-                      Row(
-                        children: [
-                          GestureDetector(
-                            onTap: () {
-                              setModalState(() {
-                                selectedSummaryDate = DateTime(selectedSummaryDate.year, selectedSummaryDate.month - 1);
-                              });
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFE0E5EC),
-                                borderRadius: BorderRadius.circular(8),
-                                boxShadow: [
-                                  const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 2),
-                                  BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 2),
-                                ],
-                              ),
-                              child: const Icon(Icons.chevron_left, size: 18, color: Color(0xFF2D3142)),
-                            ),
-                          ),
-                          const SizedBox(width: 14),
-                          SizedBox(
-                            width: 80,
-                            child: Text(
-                              '${selectedSummaryDate.year}년 ${selectedSummaryDate.month}월',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: Color(0xFF2F60FF),
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              GestureDetector(
+                                onTap: () {
+                                  setModalState(() {
+                                    selectedSummaryDate = DateTime(selectedSummaryDate.year, selectedSummaryDate.month - 1);
+                                  });
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFE0E5EC),
+                                    borderRadius: BorderRadius.circular(8),
+                                    boxShadow: [
+                                      const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 2),
+                                      BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 2),
+                                    ],
+                                  ),
+                                  child: const Icon(Icons.chevron_left, size: 18, color: Color(0xFF2D3142)),
                                 ),
                               ),
-                            ),
-                          const SizedBox(width: 14),
-                          GestureDetector(
-                            onTap: () {
-                              setModalState(() {
-                                selectedSummaryDate = DateTime(selectedSummaryDate.year, selectedSummaryDate.month + 1);
-                              });
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFE0E5EC),
-                                borderRadius: BorderRadius.circular(8),
-                                boxShadow: [
-                                  const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 2),
-                                  BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 2),
-                                ],
+                              const SizedBox(width: 11),
+                              SizedBox(
+                                width: 75,
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    '${selectedSummaryDate.year}년 ${selectedSummaryDate.month}월',
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      color: Color(0xFF2F60FF),
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
                               ),
-                              child: const Icon(Icons.chevron_right, size: 18, color: Color(0xFF2D3142)),
-                            ),
+                              const SizedBox(width: 11),
+                              GestureDetector(
+                                onTap: () {
+                                  setModalState(() {
+                                    selectedSummaryDate = DateTime(selectedSummaryDate.year, selectedSummaryDate.month + 1);
+                                  });
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFE0E5EC),
+                                    borderRadius: BorderRadius.circular(8),
+                                    boxShadow: [
+                                      const BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 2),
+                                      BoxShadow(color: const Color(0xFFA3B1C6).withOpacity(0.5), offset: const Offset(2, 2), blurRadius: 2),
+                                    ],
+                                  ),
+                                  child: const Icon(Icons.chevron_right, size: 18, color: Color(0xFF2D3142)),
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
-                      )
+                        ),
+                      ),
                     ],
                   ),
+
+
                   const SizedBox(height: 24),
                   Row(
                     children: [
